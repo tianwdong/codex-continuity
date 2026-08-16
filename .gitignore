@@ -1,0 +1,13 @@
+.DS_Store
+dist/
+node_modules/
+/output/
+/codex-continuity
+
+# Private product research and local development context.
+/AGENTS.md
+/PRODUCT_DEFINITION.md
+/ROADMAP.md
+/SPEC.md
+/prototype/
+/prototype-lab/

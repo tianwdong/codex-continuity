@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["items"],
+  "properties": {
+    "items": {
+      "type": "array",
+      "maxItems": 12,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "threadId",
+          "state",
+          "checkpoint",
+          "nextAction",
+          "nextActor",
+          "checkpointEvidence",
+          "nextActionEvidence",
+          "confidence"
+        ],
+        "properties": {
+          "threadId": { "type": "string", "minLength": 1, "maxLength": 256 },
+          "state": {
+            "type": "string",
+            "enum": [
+              "completed",
+              "ready_to_continue",
+              "waiting_for_user",
+              "in_progress",
+              "no_reliable_state"
+            ]
+          },
+          "checkpoint": { "type": "string", "maxLength": 320 },
+          "nextAction": { "type": "string", "maxLength": 280 },
+          "nextActor": {
+            "type": "string",
+            "enum": ["user", "codex", "none"]
+          },
+          "checkpointEvidence": { "type": "string", "maxLength": 320 },
+          "nextActionEvidence": { "type": "string", "maxLength": 320 },
+          "confidence": {
+            "type": "string",
+            "enum": ["high", "medium", "low"]
+          }
+        }
+      }
+    }
+  }
+}

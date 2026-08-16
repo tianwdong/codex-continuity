@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["matched", "threadId", "chapter", "evidence", "confidence"],
+  "properties": {
+    "matched": { "type": "boolean" },
+    "threadId": { "type": "string", "maxLength": 256 },
+    "chapter": { "type": "string", "maxLength": 80 },
+    "evidence": { "type": "string", "maxLength": 220 },
+    "confidence": {
+      "type": "string",
+      "enum": ["high", "medium", "low", "none"]
+    }
+  }
+}

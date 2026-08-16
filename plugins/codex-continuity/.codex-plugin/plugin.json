@@ -1,0 +1,47 @@
+{
+  "name": "codex-continuity",
+  "version": "0.1.3",
+  "description": "Reuse existing Codex context, route durable work into the smallest fitting native container, and maintain task progress without a second task system.",
+  "author": {
+    "name": "Dong Tianwen",
+    "url": "https://github.com/tianwdong"
+  },
+  "homepage": "https://github.com/tianwdong/codex-continuity#readme",
+  "repository": "https://github.com/tianwdong/codex-continuity",
+  "license": "MIT",
+  "keywords": [
+    "codex",
+    "task titles",
+    "task progress",
+    "conversation continuity",
+    "context reuse",
+    "subagents",
+    "chat branches",
+    "productivity",
+    "macos",
+    "windows"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Codex Continuity",
+    "shortDescription": "Reuse existing context without adding a second task system.",
+    "longDescription": "On the first prompt of a new task, check once for one unique, high-confidence Codex task to continue. Keep one-off side questions in the current task without changing its title or progress. Suggest a native subagent, chat branch, or new task only when the user explicitly asks to split durable work. After completed turns, extract traceable progress and conservatively maintain the native title. Every persistent task change requires user confirmation.",
+    "developerName": "Dong Tianwen",
+    "category": "Productivity",
+    "websiteURL": "https://github.com/tianwdong/codex-continuity",
+    "privacyPolicyURL": "https://github.com/tianwdong/codex-continuity/blob/main/PRIVACY.md",
+    "brandColor": "#2563EB",
+    "composerIcon": "./assets/icon.png",
+    "logo": "./assets/logo.png",
+    "capabilities": [
+      "Automation",
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Check whether an existing Codex task already matches my new goal.",
+      "Show the latest reliable progress for this task.",
+      "Decide whether this durable work should stay here, run in parallel, or move to a persistent branch."
+    ]
+  }
+}

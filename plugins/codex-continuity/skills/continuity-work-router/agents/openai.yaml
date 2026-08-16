@@ -1,0 +1,10 @@
+interface:
+  display_name: "Choose a work path"
+  short_description: "Keep, delegate, branch, or start fresh"
+  icon_small: "../../assets/icon.png"
+  icon_large: "../../assets/logo.png"
+  brand_color: "#2563EB"
+  default_prompt: "Use $codex-continuity:continuity-work-router to decide whether this durable work should stay here, run in parallel, or move to a persistent branch."
+
+policy:
+  allow_implicit_invocation: false

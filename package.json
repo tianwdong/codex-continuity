@@ -1,0 +1,30 @@
+{
+  "name": "codex-continuity",
+  "version": "0.1.3",
+  "description": "A lightweight, local-first Codex plugin for reusing existing task context and maintaining semantic progress.",
+  "private": true,
+  "license": "MIT",
+  "author": "Dong Tianwen",
+  "homepage": "https://github.com/tianwdong/codex-continuity#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tianwdong/codex-continuity.git"
+  },
+  "bugs": {
+    "url": "https://github.com/tianwdong/codex-continuity/issues"
+  },
+  "type": "module",
+  "scripts": {
+    "validate:skills": "node scripts/validate-skills.mjs",
+    "build:plugin": "bash scripts/build-plugin.sh",
+    "install:plugin:dev": "bash scripts/install-plugin-dev.sh",
+    "start": "npm run build:plugin",
+    "legacy:build:macos": "bash scripts/build-macos-app.sh",
+    "legacy:sidecar": "node src/sidecar.mjs",
+    "serve": "node src/server.mjs",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22.5"
+  }
+}

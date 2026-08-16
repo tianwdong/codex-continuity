@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["items"],
+  "properties": {
+    "items": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["threadId", "chapter", "evidence", "confidence"],
+        "properties": {
+          "threadId": { "type": "string", "minLength": 1, "maxLength": 256 },
+          "chapter": { "type": "string", "minLength": 1, "maxLength": 40 },
+          "evidence": { "type": "string", "minLength": 1, "maxLength": 220 },
+          "confidence": {
+            "type": "string",
+            "enum": ["high", "medium", "low"]
+          }
+        }
+      }
+    }
+  }
+}

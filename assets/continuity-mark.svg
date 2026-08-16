@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">Codex Continuity</title>
+  <rect width="512" height="512" rx="112" fill="#2563EB"/>
+  <path
+    d="M344 138C210 77 103 162 121 276C138 383 252 420 344 370"
+    fill="none"
+    stroke="#FFFFFF"
+    stroke-width="44"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <circle cx="344" cy="138" r="34" fill="#FFFFFF"/>
+  <circle cx="344" cy="138" r="12" fill="#2563EB"/>
+  <circle cx="344" cy="370" r="34" fill="#FFFFFF"/>
+  <circle cx="344" cy="370" r="12" fill="#2563EB"/>
+</svg>

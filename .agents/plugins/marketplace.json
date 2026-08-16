@@ -1,0 +1,20 @@
+{
+  "name": "codex-continuity",
+  "interface": {
+    "displayName": "Codex Continuity"
+  },
+  "plugins": [
+    {
+      "name": "codex-continuity",
+      "source": {
+        "source": "local",
+        "path": "./plugins/codex-continuity"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

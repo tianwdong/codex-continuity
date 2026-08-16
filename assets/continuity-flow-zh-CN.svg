@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 210" role="img" aria-labelledby="title desc">
+  <title id="title">Codex Continuity 工作流程</title>
+  <desc id="desc">横向展示新任务开始前的上下文匹配，以及一轮完成后的进展维护。</desc>
+  <style>
+    .canvas { fill: #ffffff; stroke: #d8dee4; }
+    .surface { fill: #f6f8fa; stroke: #d0d7de; }
+    .primary { fill: #1f2328; font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif; font-size: 18px; font-weight: 600; }
+    .secondary { fill: #59636e; font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif; font-size: 14px; }
+    .eyebrow { fill: #59636e; font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif; font-size: 14px; font-weight: 600; letter-spacing: 1.2px; }
+    .guide { stroke: #d0d7de; stroke-width: 1.5; }
+    .arrow { stroke: #8c959f; stroke-width: 2; fill: none; stroke-linecap: round; }
+    .arrow-fill { fill: #8c959f; }
+    .brand { fill: #2f6feb; stroke: #2f6feb; }
+    .brand-primary { fill: #ffffff; font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif; font-size: 20px; font-weight: 700; }
+    .brand-secondary { fill: #dbeafe; font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif; font-size: 14px; }
+  </style>
+  <defs>
+    <marker id="arrowhead" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path class="arrow-fill" d="M0,0 L8,4 L0,8 Z" />
+    </marker>
+  </defs>
+
+  <rect class="canvas" x="0.75" y="0.75" width="1198.5" height="208.5" rx="20" />
+
+  <text class="eyebrow" x="252" y="27" text-anchor="middle">开始之前</text>
+  <line class="guide" x1="25" y1="44" x2="480" y2="44" />
+  <text class="eyebrow" x="948" y="27" text-anchor="middle">Codex 回复之后</text>
+  <line class="guide" x1="720" y1="44" x2="1175" y2="44" />
+
+  <rect class="surface" x="25" y="69" width="200" height="100" rx="18" />
+  <text class="primary" x="125" y="110" text-anchor="middle">说出你想做什么</text>
+  <text class="secondary" x="125" y="139" text-anchor="middle">和平时一样</text>
+
+  <path class="arrow" d="M225 119 H262" marker-end="url(#arrowhead)" />
+
+  <rect class="surface" x="270" y="69" width="210" height="100" rx="18" />
+  <text class="primary" x="375" y="110" text-anchor="middle">看看是否做过</text>
+  <text class="secondary" x="375" y="139" text-anchor="middle">只给一个明确建议</text>
+
+  <path class="arrow" d="M480 119 H507" marker-end="url(#arrowhead)" />
+
+  <rect class="brand" x="515" y="69" width="170" height="100" rx="24" />
+  <text class="brand-primary" x="600" y="110" text-anchor="middle">Codex</text>
+  <text class="brand-secondary" x="600" y="139" text-anchor="middle">继续工作</text>
+
+  <path class="arrow" d="M685 119 H712" marker-end="url(#arrowhead)" />
+
+  <rect class="surface" x="720" y="69" width="210" height="100" rx="18" />
+  <text class="primary" x="825" y="110" text-anchor="middle">这轮做成了什么</text>
+  <text class="secondary" x="825" y="139" text-anchor="middle">只看最近回复</text>
+
+  <path class="arrow" d="M930 119 H967" marker-end="url(#arrowhead)" />
+
+  <rect class="surface" x="975" y="69" width="200" height="100" rx="18" />
+  <text class="primary" x="1075" y="110" text-anchor="middle">下次一眼找到</text>
+  <text class="secondary" x="1075" y="139" text-anchor="middle">记录进展 · 必要时改名</text>
+</svg>

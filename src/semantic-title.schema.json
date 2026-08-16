@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["items"],
+  "properties": {
+    "items": {
+      "type": "array",
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "threadId",
+          "decision",
+          "workstream",
+          "titleChapter",
+          "evidence",
+          "confidence",
+          "progressDecision",
+          "progressChapter",
+          "progress",
+          "progressEvidence",
+          "progressConfidence"
+        ],
+        "properties": {
+          "threadId": { "type": "string", "minLength": 1, "maxLength": 256 },
+          "decision": {
+            "type": "string",
+            "enum": ["keep", "update_chapter", "replace_workstream", "suggest_new_thread"]
+          },
+          "workstream": { "type": "string", "minLength": 1, "maxLength": 64 },
+          "titleChapter": { "type": "string", "maxLength": 64 },
+          "evidence": { "type": "string", "maxLength": 220 },
+          "confidence": { "type": "string", "enum": ["high", "medium", "low"] },
+          "progressDecision": { "type": "string", "enum": ["keep", "update"] },
+          "progressChapter": { "type": "string", "maxLength": 64 },
+          "progress": { "type": "string", "maxLength": 200 },
+          "progressEvidence": { "type": "string", "maxLength": 220 },
+          "progressConfidence": { "type": "string", "enum": ["high", "medium", "low"] }
+        }
+      }
+    }
+  }
+}
