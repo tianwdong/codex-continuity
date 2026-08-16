@@ -74,11 +74,12 @@ test("bilingual READMEs link to each other and document direct installation", as
   assert.match(englishReadme, /explicit standing authorization/);
   assert.match(englishReadme, /Persistent branches, separate tasks, returns, and archives always require confirmation/);
   assert.doesNotMatch(englishReadme, /The other two appear only when you ask/);
-  assert.match(chineseReadme, /Continuity 会在你提出新目标时静默判断/);
-  assert.match(chineseReadme, /留在当前任务和低置信判断都完全静默/);
-  assert.match(chineseReadme, /已有自动委派授权/);
-  assert.match(chineseReadme, /聊天支线、新任务、回传和归档等持久动作始终需要明确确认/);
+  assert.match(chineseReadme, /别再翻一排 Codex 任务/);
+  assert.match(chineseReadme, /拿不准时，Continuity 就留在当前任务，不打扰你/);
+  assert.match(chineseReadme, /你已经授权自动委派时/);
+  assert.match(chineseReadme, /开支线、新建任务、回传结果和归档旧任务前，Continuity 都会先征求你的确认/);
   assert.doesNotMatch(chineseReadme, /后两项只在你主动询问/);
+  assert.doesNotMatch(chineseReadme, /静默选择最小承载方式|低置信判断|持久结构/);
 });
 
 test("repository marketplace bundle exactly matches the distributable allowlist", async () => {
