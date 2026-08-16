@@ -69,6 +69,16 @@ test("bilingual READMEs link to each other and document direct installation", as
   }
   assert.match(englishReadme, /href="\.\/README\.zh-CN\.md">简体中文<\/a>/);
   assert.match(chineseReadme, /href="\.\/README\.md">English<\/a>/);
+  assert.match(englishReadme, /When you state a new goal, Continuity quietly judges/);
+  assert.match(englishReadme, /Current-task and low-confidence decisions stay completely silent/);
+  assert.match(englishReadme, /explicit standing authorization/);
+  assert.match(englishReadme, /Persistent branches, separate tasks, returns, and archives always require confirmation/);
+  assert.doesNotMatch(englishReadme, /The other two appear only when you ask/);
+  assert.match(chineseReadme, /Continuity 会在你提出新目标时静默判断/);
+  assert.match(chineseReadme, /留在当前任务和低置信判断都完全静默/);
+  assert.match(chineseReadme, /已有自动委派授权/);
+  assert.match(chineseReadme, /聊天支线、新任务、回传和归档等持久动作始终需要明确确认/);
+  assert.doesNotMatch(chineseReadme, /后两项只在你主动询问/);
 });
 
 test("repository marketplace bundle exactly matches the distributable allowlist", async () => {

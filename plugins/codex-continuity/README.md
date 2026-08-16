@@ -55,7 +55,7 @@ Restart Desktop, then review and trust **Codex Continuity** in Hook management. 
 
 ## Four ways Continuity helps
 
-Two abilities work quietly during normal Codex use. The other two appear only when you ask for help deciding how work should continue.
+All four abilities fit into normal conversation; you do not have to keep asking how work should continue. When you state a new goal, Continuity quietly judges whether to stay in the current task, use a subagent, create a branch, or start a separate task. Most requests simply continue. It asks only before changing durable task structure.
 
 ### 1. Continue the task that already knows the work · Core
 
@@ -65,13 +65,13 @@ When you start a new task inside a project, Continuity checks whether one existi
 
 Codex can name a task from its first message, but the work may later move somewhere else. Continuity keeps a short local progress marker and only updates the native title after a clear chapter change. You can inspect, undo, lock, or resume automatic title maintenance at any time.
 
-### 3. Decide whether work should stay, branch, or start fresh · On demand
+### 3. Quietly decide whether work should stay, branch, or start fresh · Core
 
-When you ask whether work should be split, Continuity recommends one native Codex path: stay in the current task, use a subagent, create a chat branch, or start a new task. It explains the choice and waits for your approval.
+For each new durable goal, Continuity reuses the current Codex model for one lightweight semantic judgment instead of adding another LLM Hook. Staying in the current task and low-confidence decisions produce no prompt. A durable branch or separate task gets one lightweight confirmation because it changes long-term structure.
 
-### 4. Pick a suitable subagent · On demand
+### 4. Recommend or dispatch a suitable subagent · When useful
 
-After you choose delegation, Continuity can recommend both a main-agent profile and a worker profile. The main-agent choice remains yours; the worker profile is applied only when you approve the dispatch. Recommendations may use the latest public [ModelDial Radar](https://modeldial.com/radar) snapshot, without sending your prompt, code, task title, project folder, current configuration, credentials, or telemetry to ModelDial.
+When work is bounded, independent, and parallel execution would materially improve speed or quality, Continuity offers one short delegation recommendation. With explicit standing authorization for automatic delegation, it may launch the subagent and briefly disclose what it delegated; otherwise it waits for **Run in parallel** or **Do it here**. The main-agent choice remains yours. Profile recommendations may use the latest public [ModelDial Radar](https://modeldial.com/radar) snapshot, without sending your prompt, code, task title, project folder, current configuration, credentials, or telemetry to ModelDial.
 
 ## A simple way to organize Codex work
 
@@ -104,7 +104,7 @@ Continuity title            Cloudflare cost | Containment verified
 
 Continuity solves this without adding a board, inbox, labels, priorities, or another project database.
 
-## How the two automatic moments work
+## How the three automatic moments work
 
 ### Before the first message: look for existing context
 
@@ -116,13 +116,24 @@ Describe your goal naturally. On the first prompt of a genuinely new task, Conti
 
 It never sends another message, navigates, archives, forks, or merges a task without your choice.
 
+### On each new goal: quietly choose the smallest carrier
+
+The current Codex model classifies a new durable goal as work for the current task, a native subagent, a persistent chat branch, or a separate task.
+
+- Current task: show nothing and do the work.
+- Suitable subagent: offer one lightweight recommendation, or launch and briefly disclose it when automatic delegation is already authorized.
+- Persistent branch or new task: ask once, then use the native Codex action.
+- Low confidence: stay in the current task without interruption.
+
+An explicit **Do it here** immediately overrides any unexecuted automatic suggestion. Returning work to a parent task and archiving remain confirmed durable actions.
+
 ### After a completed turn: keep progress recognizable
 
 Codex still owns the initial title. After later turns, an asynchronous `Stop` Hook reads a bounded slice of the final reply and extracts the current work chapter, one evidence-backed progress statement, and whether the work has moved far enough to justify a title update.
 
 Only a clear chapter change may update the native title. Small fixes, repeated conclusions, incomplete work, weak evidence, or model failure leave it untouched. Automatic title changes are reversible and can be locked per task.
 
-## Two moments, no new workflow
+## Three moments, still no new workflow
 
 <p align="center">
   <img src="./assets/continuity-flow-en.svg" alt="Say what you want, see whether it already exists, keep working in Codex, then make the result easy to find next time." width="1200" />
@@ -136,7 +147,8 @@ No command is required for everyday work.
 
 1. Create a task and describe the goal naturally.
 2. If Continuity finds one reliable existing context, choose whether to continue it or stay in the new task.
-3. Let Codex finish a turn. Continuity records a short local progress marker and updates the title only when the chapter has clearly changed.
+3. State later goals normally. Continuity quietly chooses the smallest carrier and asks only before a durable structure change.
+4. Let Codex finish a turn. Continuity records a short local progress marker and updates the title only when the chapter has clearly changed.
 
 You can also ask in natural language:
 
@@ -147,9 +159,9 @@ Keep this title and stop updating it automatically.
 Resume automatic title updates.
 ```
 
-## How on-demand routing works
+## How quiet routing works
 
-Continuity does not interrupt ordinary requests with a workflow menu. If you explicitly ask whether work should be split, parallelized, or moved elsewhere, an on-demand Skill can recommend one native Codex carrier:
+Continuity does not interrupt ordinary requests with a workflow menu. When a new goal matches its scope, the implicitly invokable router lets the current Codex model choose the smallest native carrier:
 
 | Situation | Recommended native carrier |
 | --- | --- |
@@ -158,9 +170,9 @@ Continuity does not interrupt ordinary requests with a workflow menu. If you exp
 | Work that does not need the current context | New task |
 | Everything else | Stay in the current task |
 
-The recommendation is optional. Continuity does not create the subagent, branch, or task until you authorize the native action.
+Current-task and low-confidence decisions stay completely silent. Subagents consume additional tokens, so Continuity recommends them only for bounded independent work where parallel execution materially improves speed or quality. It does not launch one without direct approval or explicit standing authorization. Persistent branches, separate tasks, returns, and archives always require confirmation.
 
-When a subagent is appropriate, the optional delegation Skill uses Codex model roles to narrow the model family and may read the latest public [ModelDial Radar](https://modeldial.com/radar) snapshot to select a configuration within that family. It always states the main-agent recommendation as well as the worker recommendation. The plugin does not switch the main agent automatically, and no prompt, code, task title, working directory, current configuration, credentials, or telemetry is sent to ModelDial.
+Only a **Subagent** route enters the downstream delegation Skill; it does not run independently on every request. That Skill uses Codex model roles to narrow the model family and may read the latest public [ModelDial Radar](https://modeldial.com/radar) snapshot to select a configuration within that family. It always states the main-agent recommendation as well as the worker recommendation. The plugin does not switch the main agent automatically, and no prompt, code, task title, working directory, current configuration, credentials, or telemetry is sent to ModelDial.
 
 ## Compatibility
 
@@ -196,7 +208,7 @@ Continuity reuses Codex capabilities instead of recreating a conversation system
 | Moment | Native source of truth | Continuity adds | Failure behavior |
 | --- | --- | --- | --- |
 | First prompt in a new task | `UserPromptSubmit`, native task list and reads | Review up to three same-directory candidates | Continue the original prompt silently |
-| User explicitly asks to split work | Plugin Skill and native task/subagent tools | Recommend one carrier | Stay in the current task |
+| Each new durable goal | Implicitly invokable router Skill, current Codex model, and native tools | Quietly choose the smallest carrier; confirm only high-impact actions | Stay in the current task |
 | A turn completes | Async `Stop` Hook, `turn_id`, final assistant message | Extract chapter/progress; optionally request a title change | Preserve the existing title and progress |
 | User requests control | Plugin Skill | Inspect, undo, lock, or resume title maintenance | Make no task change |
 
@@ -208,7 +220,7 @@ Continuity intentionally does **not** provide:
 
 - a board, inbox, priorities, due dates, or another project database;
 - manual labels or a status-maintenance ritual;
-- automatic navigation, archiving, forking, merging, or subagent creation;
+- automatic navigation, archiving, persistent branching, merging, or new-task creation; subagent creation without direct approval or standing auto-delegation authorization;
 - cross-directory matching unless the user explicitly requests it;
 - modification of the official app bundle or `app.asar`;
 - a custom replacement for the native Codex task list.

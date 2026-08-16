@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import readline from "node:readline";
 
 const REQUEST_TIMEOUT_MS = 30_000;
-export const APP_SERVER_CLIENT_VERSION = "0.1.3";
+export const APP_SERVER_CLIENT_VERSION = "0.1.4";
 
 export class AppServerClient {
   constructor({ command = "codex", args = ["app-server"], env = process.env } = {}) {

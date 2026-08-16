@@ -1,11 +1,11 @@
 ---
 name: continuity-work-router
-description: Route durable Codex work among the current task, native subagents, a persistent chat branch, or a separate new task while requiring explicit consent before container changes. Use when a user asks whether to split, fork, branch, delegate, use subagents, merge results back, or archive a branch, or answers a prior Continuity suggestion with “并行处理” or “run in parallel”, “开支线” or “create a branch”, “新建任务” or “create a new task”, “就在这里做” or “do it here”, “回到主线” or “return to the parent”, or “回主线并归档” or “return and archive”. Do not use for ordinary work or one-shot side questions that do not create a durable workline.
+description: Quietly classify each new durable Codex goal as work for the current task, a native subagent, a persistent chat branch, or a separate new task. Invoke implicitly for new durable goals and when a user asks to split, fork, branch, delegate, use subagents, merge results back, archive a branch, or answers a prior Continuity suggestion with “并行处理” or “run in parallel”, “开支线” or “create a branch”, “新建任务” or “create a new task”, “就在这里做” or “do it here”, “回到主线” or “return to the parent”, or “回主线并归档” or “return and archive”. Stay silent for current-task decisions, one-shot side questions, and low-confidence classifications.
 ---
 
 # Codex Continuity Work Router
 
-Keep routing invisible unless durable work clearly benefits from changing containers. Never turn every request into a menu.
+Classify every new durable goal, but keep routing invisible unless the work clearly benefits from another container. Never turn every request into a menu.
 Write every user-facing response in the language of the user's latest request. Localize choice labels and example wording; preserve commands, native task titles, model names, links, and quoted evidence as-is.
 
 ## Resolve a pending choice first
@@ -14,6 +14,7 @@ Write every user-facing response in the language of the user's latest request. L
 - If the request answers a pending `continuity-context-match` suggestion, let that Skill apply the choice and stop this workflow.
 - Preserve the exact request that caused the prior routing suggestion. Never replace it with a generated approximation.
 - Treat “就在这里做” as consent to execute that preserved request in the current task without asking again.
+- If the latest request directly says to keep or do the work in the current task, choose **Current task** immediately. This explicit choice overrides an automatic delegation, branch, or new-task recommendation that has not yet executed.
 - Treat “并行处理”, “开支线”, “新建任务”, “回到主线”, and “回主线并归档” as consent only for the one route that was just proposed or when the user makes the same direct, unambiguous request. Never infer consent from silence or a vague acknowledgement.
 
 ## Choose the smallest fitting container
@@ -29,7 +30,9 @@ Use these routes in order:
 
 When confidence is low, keep the work in the current task and say nothing about routing.
 
-## Hand an approved native subagent route to dispatch
+Do not announce a **Current task** classification, confidence score, internal rationale, or the fact that this Skill ran. Continue with the user's request.
+
+## Hand a selected native subagent route to dispatch
 
 After choosing **Native subagent**, apply `$codex-continuity:continuity-subagent-dispatch` before presenting or executing that route. The dispatch Skill alone owns ModelDial reads, quality／economy mode selection, model and reasoning-effort advice, and permitted native overrides.
 
@@ -37,10 +40,14 @@ After choosing **Native subagent**, apply `$codex-continuity:continuity-subagent
 - The dispatch Skill classifies the bounded responsibility as focused, exploration, or demanding. Do not duplicate that task-role logic here or expose it as another user choice.
 - If the dispatch Skill is unavailable, invalid, or blocked by higher-priority rules, keep the normal native-subagent choice usable with the currently permitted configuration.
 - Never duplicate its ranking logic, switch the current main agent, or expose extra model choices from this Skill.
+- Selecting the subagent route authorizes the dispatch Skill to prepare one recommendation. It does not by itself authorize launching a subagent.
+- Treat a direct request for delegation, an explicit pending choice of “并行处理”, an applicable higher-priority instruction, or an explicit standing instruction to auto-delegate suitable work as authorization to launch. Do not infer standing authorization from prior successful delegations, silence, tool availability, or installation of this plugin.
+- With standing authorization, launch the bounded subagent and briefly state what was delegated and which permitted worker configuration was used. Do not ask for another confirmation.
+- Without launch authorization, present one lightweight recommendation and wait for “并行处理” or “就在这里做”.
 
 ## Offer one decision, not four options
 
-For a bounded parallel subtask, use the dispatch Skill's lightweight recommendation when available. Otherwise say:
+For a bounded parallel subtask without launch authorization, use the dispatch Skill's lightweight recommendation when available. Otherwise say:
 
 ```text
 这部分适合在当前任务内并行处理，结果会自动回来，不会增加任务列表。
@@ -63,16 +70,19 @@ For unrelated durable work, say:
 
 Do not expose scores, internal classifiers, or tool names.
 
+Creating a persistent branch or separate task, returning work to another task, and archiving a task always require an explicit user choice. A direct, unambiguous request for that exact action is the confirmation; an inferred route is not.
+
 ## Execute an approved subagent route
 
 1. Use the native collaboration or subagent tools, not `create_thread` or `fork_thread`.
-2. Obey the current system instructions and applicable `AGENTS.md` or Skill rules. A direct user request for a subagent, an applicable higher-priority instruction, or the explicit “并行处理” choice can authorize delegation; this Skill alone cannot.
+2. Obey the current system instructions and applicable `AGENTS.md` or Skill rules. A direct user request for a subagent, an applicable higher-priority instruction, an explicit standing auto-delegation instruction, or the explicit “并行处理” choice can authorize delegation; this Skill alone cannot.
 3. Give each subagent one bounded responsibility. Warn it about shared workspace edits when applicable.
 4. Use one subagent by default. Add another only for an independent, non-overlapping workstream that materially improves speed or quality; obey native concurrency and ownership rules.
 5. Wait for the result, verify it proportionately, and synthesize it into the current parent task.
 6. Never rename, archive, navigate to, match against, or present a subagent thread as a user task. The parent owns the outcome.
 7. If the work becomes persistent or needs future user steering, have the subagent return a concise `needs_branch` summary. Ask the branch choice in the parent; never silently promote the subagent thread.
 8. Let `continuity-subagent-dispatch` apply any permitted model or reasoning-effort override. Never duplicate its fallback or change the main agent here.
+9. After an automatically authorized launch, give one brief disclosure in the parent task. Do not turn it into a second approval step or expose internal classification details.
 
 ## Execute an approved branch route
 

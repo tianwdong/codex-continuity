@@ -1,6 +1,6 @@
 {
   "name": "codex-continuity",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Reuse existing Codex context, route durable work into the smallest fitting native container, and maintain task progress without a second task system.",
   "author": {
     "name": "Dong Tianwen",
@@ -25,7 +25,7 @@
   "interface": {
     "displayName": "Codex Continuity",
     "shortDescription": "Reuse existing context without adding a second task system.",
-    "longDescription": "On the first prompt of a new task, check once for one unique, high-confidence Codex task to continue. Keep one-off side questions in the current task without changing its title or progress. Suggest a native subagent, chat branch, or new task only when the user explicitly asks to split durable work. After completed turns, extract traceable progress and conservatively maintain the native title. Every persistent task change requires user confirmation.",
+    "longDescription": "On the first prompt of a new task, check once for one unique, high-confidence Codex task to continue. For each new durable goal, quietly use the current Codex model to choose the smallest fitting native path: stay in the current task, recommend or dispatch a subagent when authorized, suggest a persistent branch, or suggest a separate task. Current-task and low-confidence decisions stay silent; persistent task changes require confirmation. After completed turns, extract traceable progress and conservatively maintain the native title.",
     "developerName": "Dong Tianwen",
     "category": "Productivity",
     "websiteURL": "https://github.com/tianwdong/codex-continuity",
@@ -41,7 +41,7 @@
     "defaultPrompt": [
       "Check whether an existing Codex task already matches my new goal.",
       "Show the latest reliable progress for this task.",
-      "Decide whether this durable work should stay here, run in parallel, or move to a persistent branch."
+      "Quietly route this new durable goal into the smallest fitting Codex path."
     ]
   }
 }

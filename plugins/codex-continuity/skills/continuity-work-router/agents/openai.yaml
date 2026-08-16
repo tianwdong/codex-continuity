@@ -7,4 +7,4 @@ interface:
   default_prompt: "Use $codex-continuity:continuity-work-router to decide whether this durable work should stay here, run in parallel, or move to a persistent branch."
 
 policy:
-  allow_implicit_invocation: false
+  allow_implicit_invocation: true

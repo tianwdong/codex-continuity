@@ -221,14 +221,20 @@ test("plugin package includes the prompt Hook, matching Skill, work router, and 
   assert.deepEqual(manifest.interface.defaultPrompt, [
     "Check whether an existing Codex task already matches my new goal.",
     "Show the latest reliable progress for this task.",
-    "Decide whether this durable work should stay here, run in parallel, or move to a persistent branch.",
+    "Quietly route this new durable goal into the smallest fitting Codex path.",
   ]);
-  assert.match(routerSkillPrompt, /policy:\s*[\s\S]*allow_implicit_invocation:\s*false/);
+  assert.match(manifest.interface.longDescription, /For each new durable goal, quietly use the current Codex model/);
+  assert.doesNotMatch(manifest.interface.longDescription, /only when the user explicitly asks/);
+  assert.match(routerSkillPrompt, /policy:\s*[\s\S]*allow_implicit_invocation:\s*true/);
   assert.match(dispatchSkillPrompt, /policy:\s*[\s\S]*allow_implicit_invocation:\s*false/);
   assert.match(privacy, /https:\/\/modeldial\.com\/api\/v1\/radar\/latest\.json/);
   assert.doesNotMatch(privacy, /agent-profile\.json/);
   assert.match(privacy, /不含 turns 的线程元数据/);
   assert.match(privacy, /不会读取完整任务历史/);
+  assert.match(privacy, /工作路由 Skill 允许 Codex 在新目标与其职责匹配时隐式调用/);
+  assert.match(privacy, /不另外调用分类模型/);
+  assert.match(privacy, /留在当前任务和低置信判断不产生提示/);
+  assert.match(privacy, /聊天支线、新任务、回传和归档始终需要用户明确确认/);
   assert.match(matchingSkill, /never require a matching title or summary before reading recent context/);
   assert.match(matchingSkill, /Write every user-facing response in the language of the user's latest request/);
   assert.match(matchingSkill, /ranking hints rather than a gate/);
@@ -245,6 +251,7 @@ test("plugin package includes the prompt Hook, matching Skill, work router, and 
   assert.match(matchingSkillPrompt, /codex-continuity:continuity-context-match/);
   assert.doesNotMatch(matchingSkillPrompt, /\$continuity-context-match/);
   assert.match(routerSkill, /Current task/);
+  assert.match(routerSkill, /Quietly classify each new durable Codex goal/);
   assert.match(routerSkill, /Write every user-facing response in the language of the user's latest request/);
   assert.match(routerSkill, /Native subagent/);
   assert.match(routerSkill, /Persistent chat branch/);
@@ -252,20 +259,26 @@ test("plugin package includes the prompt Hook, matching Skill, work router, and 
   assert.match(routerSkill, /One-shot lookups, calculations, translations/);
   assert.match(routerSkill, /Never make a Continuity route suggestion from inside a subagent/);
   assert.match(routerSkill, /Never infer consent/);
+  assert.match(routerSkill, /explicit choice overrides an automatic delegation, branch, or new-task recommendation/);
+  assert.match(routerSkill, /Do not announce a \*\*Current task\*\* classification/);
   assert.match(routerSkill, /materially improves speed or quality/);
   assert.match(routerSkill, /one dependent chain, or shared mutable work/);
   assert.match(routerSkill, /fork contains completed history only/);
   assert.match(routerSkill, /Treat “合回” as a context handoff/);
   assert.match(routerSkill, /Archive it only when the user explicitly chose/);
+  assert.match(routerSkill, /explicit standing instruction to auto-delegate suitable work/);
+  assert.match(routerSkill, /Creating a persistent branch or separate task[\s\S]*always require an explicit user choice/);
   assert.match(routerSkillPrompt, /\$codex-continuity:continuity-work-router/);
   assert.match(routerSkill, /\$codex-continuity:continuity-subagent-dispatch/);
   assert.match(dispatchSkill, /after the native-subagent route has already been chosen/);
+  assert.match(dispatchSkill, /explicit standing auto-delegation instruction/);
   assert.match(dispatchSkill, /Write every user-facing response in the language of the user's latest request/);
   assert.match(dispatchSkill, /Use \*\*economy\*\* by default/);
   assert.match(dispatchSkill, /`focused`/);
   assert.match(dispatchSkill, /`exploration`/);
   assert.match(dispatchSkill, /`demanding`/);
   assert.match(dispatchSkillPrompt, /\$codex-continuity:continuity-subagent-dispatch/);
+  assert.match(dispatchSkill, /Launch first, then briefly disclose/);
   assert.match(dispatchScript, /ECONOMY_QUALITY_FLOOR_RATIO = 0\.8/);
   assert.match(dispatchScript, /ECONOMY_SCORE_TIE_POINTS = 1/);
   assert.match(dispatchScript, /focused: "gpt-5\.6-luna"/);

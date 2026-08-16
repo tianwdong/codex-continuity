@@ -10,7 +10,7 @@ Write every user-facing response in the language of the user's latest request. L
 
 ## Confirm the dispatch boundary
 
-- Require an already-selected native-subagent route, a direct user request for a subagent, an explicit pending choice of “并行处理”, or a higher-priority instruction that authorizes delegation.
+- Require an already-selected native-subagent route, a direct user request for a subagent, an explicit pending choice of “并行处理”, an explicit standing auto-delegation instruction, or a higher-priority instruction that authorizes delegation.
 - Never treat this Skill, a ModelDial recommendation, or tool availability as delegation consent.
 - Never run this workflow from inside a delegated or subagent task.
 - Preserve the exact bounded responsibility chosen by the parent. Do not widen it, turn it into a branch, or create a user-visible task.
@@ -81,6 +81,8 @@ If the selector is unavailable or invalid, keep the original lightweight subagen
 这部分适合在当前任务内并行处理，结果会自动回来，不会增加任务列表。
 回复「并行处理」或「就在这里做」。
 ```
+
+When delegation is already authorized by a direct request, a pending choice, a standing instruction, or a higher-priority rule, do not show either choice prompt. Launch first, then briefly disclose the bounded responsibility and the worker configuration actually used.
 
 ## Execute the approved delegation
 
