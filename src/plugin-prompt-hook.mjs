@@ -61,6 +61,7 @@ export function buildPromptHookOutput(event, {
   titleMaintenanceLocked = false,
 } = {}) {
   if (!event?.threadId) return {};
+  if (!String(event.cwd || "").trim()) return {};
   if (!includeContextMatch) {
     const titleInstruction = titleMaintenanceLocked
       ? "Automatic task-title maintenance is locked. Never call set_thread_title."
@@ -75,7 +76,6 @@ export function buildPromptHookOutput(event, {
       },
     };
   }
-  if (!String(event.cwd || "").trim()) return {};
   const threadId = String(event.threadId).slice(0, 64);
   const task = `Task: ${threadId}.`;
   const rawCwd = String(event.cwd || "");
@@ -99,11 +99,9 @@ async function main() {
   for await (const chunk of process.stdin) rawInput += chunk;
   const event = parsePromptHookInput(rawInput);
   if (!event) return {};
+  if (!event.cwd) return {};
   const coordinate = threadStateCoordinate(pluginDataDirectory(), event.threadId);
-  const firstPrompt = await claimPromptCheck(coordinate.promptSeenPath);
-  if (firstPrompt && !event.cwd) return {};
-  const includeContextMatch = Boolean(event.cwd)
-    && await claimPromptCheck(coordinate.promptCheckPath);
+  const includeContextMatch = await claimPromptCheck(coordinate.promptCheckPath);
   let titleMaintenanceLocked = false;
   if (!includeContextMatch) {
     try {

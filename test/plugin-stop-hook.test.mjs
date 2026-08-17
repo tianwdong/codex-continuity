@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import {
   buildStopHookOutput,
   buildHookCandidate,
+  hasStableWorkspace,
   isSubagentThread,
   launchStopHookWorker,
   maintainContinuityForStop,
@@ -48,11 +49,12 @@ function stopPayload({
   turnId = "turn-2",
   assistantMessage = "Cloudflare 费用止损已经验证。",
   stopHookActive = false,
+  cwd = "/tmp/modeldial",
 } = {}) {
   return {
     session_id: "thread-1",
     transcript_path: "/tmp/rollout.jsonl",
-    cwd: "/tmp/modeldial",
+    cwd,
     hook_event_name: "Stop",
     model: "gpt-5.6",
     turn_id: turnId,
@@ -85,6 +87,33 @@ test("recognizes App Server subagent source variants", () => {
   assert.equal(isSubagentThread({ threadSource: "subAgentReview" }), true);
   assert.equal(isSubagentThread({ source: "cli" }), false);
   assert.equal(isSubagentThread({ source: { vscode: {} } }), false);
+});
+
+test("keeps projectless Stop events outside the App Server path", async () => {
+  assert.equal(hasStableWorkspace(parseStopHookInput(stopPayload())), true);
+  assert.equal(hasStableWorkspace(parseStopHookInput(stopPayload({ cwd: "" }))), false);
+
+  let spawnCalls = 0;
+  const launchResult = await launchStopHookWorker(JSON.stringify(stopPayload({ cwd: "" })), {
+    spawnImpl() {
+      spawnCalls += 1;
+      throw new Error("must not spawn");
+    },
+  });
+  assert.equal(launchResult.reason, "workspace_unavailable");
+  assert.equal(spawnCalls, 0);
+
+  let reads = 0;
+  const maintainResult = await maintainContinuityForStop(stopPayload({ cwd: "" }), {
+    appServer: {
+      async readThread() {
+        reads += 1;
+        return { thread: threadFixture() };
+      },
+    },
+  });
+  assert.equal(maintainResult.reason, "workspace_unavailable");
+  assert.equal(reads, 0);
 });
 
 test("never creates a continuation prompt for sidebar refresh", () => {

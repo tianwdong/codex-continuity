@@ -105,6 +105,10 @@ export function buildStopHookOutput() {
   return {};
 }
 
+export function hasStableWorkspace(event) {
+  return Boolean(String(event?.cwd || "").trim());
+}
+
 export async function launchStopHookWorker(rawInput, {
   spawnImpl = nodeSpawn,
   nodeExecutable = process.execPath,
@@ -115,6 +119,9 @@ export async function launchStopHookWorker(rawInput, {
   if (!event) return { status: "ignored", reason: "invalid_event" };
   if (event.stopHookActive) {
     return { status: "ignored", reason: "continued_stop", ...event };
+  }
+  if (!hasStableWorkspace(event)) {
+    return { status: "ignored", reason: "workspace_unavailable", ...event };
   }
 
   return new Promise((resolve) => {
@@ -196,6 +203,9 @@ export async function maintainContinuityForStop(input, {
   const event = parseStopHookInput(input);
   if (!event) return { status: "ignored", reason: "invalid_event" };
   if (event.stopHookActive) return { status: "ignored", reason: "continued_stop", ...event };
+  if (!hasStableWorkspace(event)) {
+    return { status: "ignored", reason: "workspace_unavailable", ...event };
+  }
   if (!event.assistantMessage) {
     return { status: "ignored", reason: "assistant_message_unavailable", ...event };
   }
@@ -331,6 +341,9 @@ async function main(rawInput) {
   const event = parseStopHookInput(rawInput);
   if (!event) return { status: "ignored", reason: "invalid_event" };
   if (event.stopHookActive) return { status: "ignored", reason: "continued_stop", ...event };
+  if (!hasStableWorkspace(event)) {
+    return { status: "ignored", reason: "workspace_unavailable", ...event };
+  }
   const dataDirectory = pluginDataDirectory();
   const coordinate = threadStateCoordinate(dataDirectory, event.threadId);
   const lock = await acquireThreadLock(coordinate.lockPath);

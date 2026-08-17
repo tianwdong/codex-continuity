@@ -40,7 +40,6 @@ export function threadStateCoordinate(dataDirectory, threadId) {
   return {
     statePath: path.join(dataDirectory, "title-state", `${digest}.json`),
     progressPath: path.join(dataDirectory, "progress-state", `${digest}.json`),
-    promptSeenPath: path.join(dataDirectory, "prompt-seen-state", `${digest}.json`),
     promptCheckPath: path.join(dataDirectory, "prompt-check-state", `${digest}.json`),
     nativeTitleTurnPath: path.join(dataDirectory, "native-title-turn", `${digest}.json`),
     lockPath: path.join(dataDirectory, "locks", `${digest}.lock`),

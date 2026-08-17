@@ -86,9 +86,9 @@ test("keeps routing active but disables native title writes while maintenance is
 
 test("keeps an empty cwd silent without consuming the first useful match", async () => {
   assert.deepEqual(buildPromptHookOutput({ threadId: "thread-1", cwd: "" }), {});
-  assert.match(buildPromptHookOutput({ threadId: "thread-1", cwd: "" }, {
+  assert.deepEqual(buildPromptHookOutput({ threadId: "thread-1", cwd: "" }, {
     includeContextMatch: false,
-  }).hookSpecificOutput.additionalContext, /continuity-work-router/);
+  }), {});
 
   const dataDirectory = await mkdtemp(path.join(os.tmpdir(), "continuity-empty-cwd-"));
   const runner = fileURLToPath(new URL("../scripts/run-prompt-hook.sh", import.meta.url));
@@ -104,6 +104,7 @@ test("keeps an empty cwd silent without consuming the first useful match", async
   }));
   try {
     assert.deepEqual(run({ ...promptPayload(), cwd: "" }), {});
+    assert.deepEqual(await readdir(dataDirectory), []);
     const withDirectory = run(promptPayload()).hookSpecificOutput.additionalContext;
     assert.match(withDirectory, /same-cwd matching/);
     assert.equal((await readdir(path.join(dataDirectory, "prompt-check-state"))).length, 1);
@@ -113,13 +114,13 @@ test("keeps an empty cwd silent without consuming the first useful match", async
       cwd: "",
     });
     assert.deepEqual(withoutDirectoryLater, {});
-    const routedWithoutDirectory = run({
+    const repeatedWithoutDirectory = run({
       ...promptPayload({ turnId: "turn-4" }),
       session_id: "thread-no-cwd",
       cwd: "",
-    }).hookSpecificOutput.additionalContext;
-    assert.match(routedWithoutDirectory, /continuity-work-router/);
-    assert.match(routedWithoutDirectory, /set_thread_title/);
+    });
+    assert.deepEqual(repeatedWithoutDirectory, {});
+    assert.equal((await readdir(path.join(dataDirectory, "prompt-check-state"))).length, 1);
   } finally {
     await rm(dataDirectory, { recursive: true, force: true });
   }

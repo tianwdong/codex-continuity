@@ -1,6 +1,6 @@
 {
   "name": "codex-continuity",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "Reuse existing Codex context, route durable work into the smallest fitting native container, and maintain task progress without a second task system.",
   "author": {
     "name": "Dong Tianwen",
