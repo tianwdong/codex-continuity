@@ -32,6 +32,19 @@ When confidence is low, keep the work in the current task and say nothing about 
 
 Do not announce a **Current task** classification, confidence score, internal rationale, or the fact that this Skill ran. Continue with the user's request.
 
+## Refresh a changed work chapter through the current Codex host
+
+The initial task title belongs to Codex. On a later root-task turn, maintain the visible title only when the `UserPromptSubmit` context explicitly says automatic task-title maintenance is unlocked for this turn.
+
+After a **Current task** route has produced a reliable completed result, decide whether the durable work chapter—not merely the next step—has clearly changed. If it has:
+
+1. Preserve the stable workstream from the current native title. If the title already uses `workstream｜chapter`, keep the text before `｜`; otherwise use the complete current title as the workstream.
+2. Create one concise, outcome-oriented chapter phrase. Do not use a status word, internal function, command, mechanical fix, or next action as the chapter.
+3. Before the final reply, call the native `set_thread_title` tool exactly once with `workstream｜chapter`. This current-host call owns immediate sidebar visibility; the `Stop` Hook remains the progress recorder and fallback.
+4. Do not mention title maintenance unless the user asks.
+
+Skip this step for the first task turn, one-shot side questions, a delegated or subagent task, a branch that should keep its own identity, the same chapter, minor fixes, wording or test-only refinements, partial or failed work, blocked work, low confidence, a missing stable workstream, an unavailable native title tool, or any context that says title maintenance is locked. Never replace the workstream automatically; unrelated durable work belongs in the branch or new-task decision above.
+
 ## Hand a selected native subagent route to dispatch
 
 After choosing **Native subagent**, apply `$codex-continuity:continuity-subagent-dispatch` before presenting or executing that route. The dispatch Skill alone owns ModelDial reads, quality／economy mode selection, model and reasoning-effort advice, and permitted native overrides.

@@ -35,6 +35,10 @@ function threadCoordinate(thread) {
   };
 }
 
+function titleWorkstream(value) {
+  return normalizedTitle(value).split("｜", 1)[0].trim();
+}
+
 export class TitleLedger {
   constructor(value = {}) {
     const threads = {};
@@ -134,6 +138,30 @@ export class TitleLedger {
     });
     this.dirty = true;
     return true;
+  }
+
+  recordNativeChapterChange(thread, turnId) {
+    const { threadId, title } = threadCoordinate(thread);
+    const previous = this.state.threads[threadId];
+    const previousTitle = normalizedTitle(previous?.observedTitle);
+    const candidateTurnId = String(turnId || "");
+    if (!threadId
+      || !title
+      || !candidateTurnId
+      || !previousTitle
+      || previous?.locked
+      || previousTitle === title
+      || !title.includes("｜")
+      || titleWorkstream(previousTitle) !== titleWorkstream(title)) return null;
+    if (!this.recordApplied({
+      threadId,
+      previousTitle,
+      title,
+      turnId: candidateTurnId,
+      sourceMessageId: "",
+      confidence: "high",
+    })) return null;
+    return { threadId, turnId: candidateTurnId, previousTitle, title };
   }
 
   undoCandidate(value) {

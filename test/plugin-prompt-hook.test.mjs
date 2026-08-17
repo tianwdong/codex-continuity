@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import {
   buildPromptHookOutput,
   claimPromptCheck,
+  markNativeTitleTurn,
   parsePromptHookInput,
 } from "../src/plugin-prompt-hook.mjs";
 import { threadStateCoordinate } from "../src/plugin-runtime.mjs";
@@ -55,16 +56,39 @@ test("builds advisory developer context without blocking or copying the prompt",
   assert.equal(output.continue, undefined);
 });
 
-test("keeps later prompts silent without repeating matching or routing", () => {
+test("routes later durable goals and requests native title refresh without repeating matching", () => {
   const output = buildPromptHookOutput(parsePromptHookInput(promptPayload({
     turnId: "turn-2",
     prompt: "帮我并行查一下测试和文档。",
   })), { includeContextMatch: false });
-  assert.deepEqual(output, {});
+  const context = output.hookSpecificOutput.additionalContext;
+  assert.match(context, /codex-continuity:continuity-work-router/);
+  assert.match(context, /set_thread_title/);
+  assert.match(context, /before the final reply/);
+  assert.match(context, /workstream｜chapter/);
+  assert.match(context, /one-shot side questions stay here/);
+  assert.doesNotMatch(context, /continuity-context-match/);
+  assert.doesNotMatch(JSON.stringify(output), /并行查一下测试和文档/);
+  assert.ok(context.length <= 600);
+});
+
+test("keeps routing active but disables native title writes while maintenance is locked", () => {
+  const output = buildPromptHookOutput(parsePromptHookInput(promptPayload({ turnId: "turn-2" })), {
+    includeContextMatch: false,
+    titleMaintenanceLocked: true,
+  });
+  const context = output.hookSpecificOutput.additionalContext;
+  assert.match(context, /continuity-work-router/);
+  assert.match(context, /maintenance is locked/);
+  assert.match(context, /Never call set_thread_title/);
+  assert.doesNotMatch(context, /before the final reply/);
 });
 
 test("keeps an empty cwd silent without consuming the first useful match", async () => {
   assert.deepEqual(buildPromptHookOutput({ threadId: "thread-1", cwd: "" }), {});
+  assert.match(buildPromptHookOutput({ threadId: "thread-1", cwd: "" }, {
+    includeContextMatch: false,
+  }).hookSpecificOutput.additionalContext, /continuity-work-router/);
 
   const dataDirectory = await mkdtemp(path.join(os.tmpdir(), "continuity-empty-cwd-"));
   const runner = fileURLToPath(new URL("../scripts/run-prompt-hook.sh", import.meta.url));
@@ -83,6 +107,19 @@ test("keeps an empty cwd silent without consuming the first useful match", async
     const withDirectory = run(promptPayload()).hookSpecificOutput.additionalContext;
     assert.match(withDirectory, /same-cwd matching/);
     assert.equal((await readdir(path.join(dataDirectory, "prompt-check-state"))).length, 1);
+    const withoutDirectoryLater = run({
+      ...promptPayload({ turnId: "turn-3" }),
+      session_id: "thread-no-cwd",
+      cwd: "",
+    });
+    assert.deepEqual(withoutDirectoryLater, {});
+    const routedWithoutDirectory = run({
+      ...promptPayload({ turnId: "turn-4" }),
+      session_id: "thread-no-cwd",
+      cwd: "",
+    }).hookSpecificOutput.additionalContext;
+    assert.match(routedWithoutDirectory, /continuity-work-router/);
+    assert.match(routedWithoutDirectory, /set_thread_title/);
   } finally {
     await rm(dataDirectory, { recursive: true, force: true });
   }
@@ -128,7 +165,22 @@ test("claims one private marker per task even under concurrent Hook calls", asyn
   }
 });
 
-test("the bundled runner checks context once and stays silent on later prompts", async () => {
+test("stores only the eligible turn id in a private native-title marker", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "continuity-native-title-turn-"));
+  const filePath = path.join(directory, "state", "thread.json");
+  try {
+    await markNativeTitleTurn(filePath, { threadId: "thread-1", turnId: "turn-2" });
+    const raw = await readFile(filePath, "utf8");
+    assert.match(raw, /"turnId":"turn-2"/);
+    assert.doesNotMatch(raw, /thread-1|继续修复|prompt/);
+    assert.equal((await stat(filePath)).mode & 0o777, 0o600);
+    assert.equal((await stat(path.dirname(filePath))).mode & 0o777, 0o700);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("the bundled runner checks context once and routes later prompts", async () => {
   const dataDirectory = await mkdtemp(path.join(os.tmpdir(), "continuity-prompt-runner-"));
   const runner = fileURLToPath(new URL("../scripts/run-prompt-hook.sh", import.meta.url));
   const environment = {
@@ -143,10 +195,13 @@ test("the bundled runner checks context once and stays silent on later prompts",
   }));
   try {
     const first = run(promptPayload()).hookSpecificOutput.additionalContext;
-    const second = run(promptPayload({ turnId: "turn-2", prompt: "同一任务第二轮。" }));
+    const second = run(promptPayload({ turnId: "turn-2", prompt: "同一任务第二轮。" }))
+      .hookSpecificOutput.additionalContext;
     assert.match(first, /codex-continuity:continuity-context-match/);
     assert.doesNotMatch(first, /codex-continuity:continuity-work-router/);
-    assert.deepEqual(second, {});
+    assert.match(second, /codex-continuity:continuity-work-router/);
+    assert.match(second, /set_thread_title/);
+    assert.doesNotMatch(second, /continuity-context-match/);
     assert.equal(run(promptPayload({ sessionId: "thread-2" })).hookSpecificOutput.hookEventName, "UserPromptSubmit");
     assert.deepEqual(run({ hook_event_name: "SessionEnd" }), {});
 
@@ -156,6 +211,9 @@ test("the bundled runner checks context once and stays silent on later prompts",
     for (const marker of markers) {
       assert.doesNotMatch(await readFile(path.join(markerDirectory, marker), "utf8"), /继续修复|同一任务第二轮/);
     }
+    const nativeMarkers = await readdir(path.join(dataDirectory, "native-title-turn"));
+    assert.equal(nativeMarkers.length, 1);
+    assert.match(await readFile(path.join(dataDirectory, "native-title-turn", nativeMarkers[0]), "utf8"), /turn-2/);
   } finally {
     await rm(dataDirectory, { recursive: true, force: true });
   }
@@ -223,7 +281,8 @@ test("plugin package includes the prompt Hook, matching Skill, work router, and 
     "Show the latest reliable progress for this task.",
     "Quietly route this new durable goal into the smallest fitting Codex path.",
   ]);
-  assert.match(manifest.interface.longDescription, /For each new durable goal, quietly use the current Codex model/);
+  assert.match(manifest.interface.longDescription, /For each later durable goal, quietly use the current Codex model/);
+  assert.match(manifest.interface.longDescription, /use the current Codex host to refresh the native title/);
   assert.doesNotMatch(manifest.interface.longDescription, /only when the user explicitly asks/);
   assert.match(routerSkillPrompt, /policy:\s*[\s\S]*allow_implicit_invocation:\s*true/);
   assert.match(dispatchSkillPrompt, /policy:\s*[\s\S]*allow_implicit_invocation:\s*false/);
@@ -231,7 +290,9 @@ test("plugin package includes the prompt Hook, matching Skill, work router, and 
   assert.doesNotMatch(privacy, /agent-profile\.json/);
   assert.match(privacy, /不含 turns 的线程元数据/);
   assert.match(privacy, /不会读取完整任务历史/);
-  assert.match(privacy, /工作路由 Skill 允许 Codex 在新目标与其职责匹配时隐式调用/);
+  assert.match(privacy, /UserPromptSubmit.*固定的工作路由与原生标题维护规则/);
+  assert.match(privacy, /不复制或保存原始 prompt/);
+  assert.match(privacy, /当前 Codex 才会调用一次原生标题工具/);
   assert.match(privacy, /不另外调用分类模型/);
   assert.match(privacy, /留在当前任务和低置信判断不产生提示/);
   assert.match(privacy, /聊天支线、新任务、回传和归档始终需要用户明确确认/);
@@ -261,6 +322,11 @@ test("plugin package includes the prompt Hook, matching Skill, work router, and 
   assert.match(routerSkill, /Never infer consent/);
   assert.match(routerSkill, /explicit choice overrides an automatic delegation, branch, or new-task recommendation/);
   assert.match(routerSkill, /Do not announce a \*\*Current task\*\* classification/);
+  assert.match(routerSkill, /current Codex host/);
+  assert.match(routerSkill, /explicitly says automatic task-title maintenance is unlocked/);
+  assert.match(routerSkill, /call the native `set_thread_title` tool exactly once/);
+  assert.match(routerSkill, /Before the final reply/);
+  assert.match(routerSkill, /Never replace the workstream automatically/);
   assert.match(routerSkill, /materially improves speed or quality/);
   assert.match(routerSkill, /one dependent chain, or shared mutable work/);
   assert.match(routerSkill, /fork contains completed history only/);

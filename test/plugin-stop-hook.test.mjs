@@ -424,6 +424,48 @@ test("persists a high-confidence title proposal and records an undo", async () =
   assert.deepEqual(buildStopHookOutput(repeated), {});
 });
 
+test("records a current-host chapter rename and does not rewrite it through the detached App Server", async () => {
+  const thread = {
+    ...threadFixture(),
+    name: "接入 Google Analytics｜原生标题刷新",
+  };
+  let writes = 0;
+  const appServer = {
+    async readThread() { return { thread }; },
+    async setThreadName() { writes += 1; },
+  };
+  const titleLedger = new TitleLedger();
+  titleLedger.observe({ ...thread, name: "接入 Google Analytics｜费用排查" });
+  const progressLedger = new ProgressLedger();
+
+  const result = await maintainContinuityForStop(stopPayload(), {
+    appServer,
+    titleLedger,
+    progressLedger,
+    nativeTitleTurnId: "turn-2",
+    decideTitles: async (items) => items.map((item) => ({
+      ...item,
+      titleDecision: "keep",
+      proposedTitle: item.nativeTitle,
+      titleConfidence: "high",
+      progressDecision: "update",
+      progressChapter: "原生标题刷新",
+      progressSummary: "当前 Codex 主机已经刷新任务标题",
+      progressConfidence: "high",
+    })),
+  });
+
+  assert.equal(result.status, "renamed");
+  assert.equal(result.change.decision, "native_update_chapter");
+  assert.equal(writes, 0);
+  assert.deepEqual(titleLedger.undoCandidate("thread-1"), {
+    threadId: "thread-1",
+    previousTitle: "接入 Google Analytics｜费用排查",
+    title: "接入 Google Analytics｜原生标题刷新",
+  });
+  assert.equal(progressLedger.current("thread-1").progress, "当前 Codex 主机已经刷新任务标题");
+});
+
 test("a separate-task suggestion protects the current title without writing it", async () => {
   const thread = {
     ...threadFixture(),

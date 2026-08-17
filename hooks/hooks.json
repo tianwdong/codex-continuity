@@ -1,5 +1,5 @@
 {
-  "description": "Reuse matching Codex context, keep transient side questions lightweight, route durable work with user control, then maintain completed progress and native titles.",
+  "description": "Reuse matching Codex context, route later durable goals with user control, refresh changed chapters through the current host, and record completed progress locally.",
   "hooks": {
     "UserPromptSubmit": [
       {

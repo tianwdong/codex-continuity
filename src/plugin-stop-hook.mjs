@@ -1,5 +1,5 @@
 import { spawn as nodeSpawn } from "node:child_process";
-import { appendFile, mkdir } from "node:fs/promises";
+import { appendFile, mkdir, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -188,6 +188,7 @@ export async function maintainContinuityForStop(input, {
   appServer,
   titleLedger,
   progressLedger = new ProgressLedger(),
+  nativeTitleTurnId = "",
   command,
   decideTitles = decideTitlesWithCodex,
   codexAvailable = true,
@@ -212,6 +213,14 @@ export async function maintainContinuityForStop(input, {
   if (!hasStopThreadMetadata(thread, event.threadId)) {
     return { status: "ignored", reason: "thread_metadata_unavailable", ...event };
   }
+  const nativeTitleChange = String(nativeTitleTurnId || "") === event.turnId
+    ? titleLedger.recordNativeChapterChange(thread, event.turnId)
+    : null;
+  let change = nativeTitleChange ? {
+    type: "title_changed",
+    decision: "native_update_chapter",
+    ...nativeTitleChange,
+  } : null;
   const previousProgress = progressLedger.current(event.threadId);
   const candidate = buildHookCandidate(event, thread, previousProgress?.nativeTitle);
   const hasPriorTurn = candidate.turnCount >= 2
@@ -221,9 +230,15 @@ export async function maintainContinuityForStop(input, {
     && titleLedger.shouldEvaluate(thread, event.turnId);
   const progressEligible = progressLedger.shouldEvaluate(event.threadId, event.turnId);
   if (!titleEligible && !progressEligible) {
-    return { status: "ignored", reason: "already_evaluated", ...event };
+    return change
+      ? { status: "renamed", change, progress: null, ...event }
+      : { status: "ignored", reason: "already_evaluated", ...event };
   }
-  if (!codexAvailable) return { status: "ignored", reason: "account_unavailable", ...event };
+  if (!codexAvailable) {
+    return change
+      ? { status: "renamed", change, progress: null, ...event }
+      : { status: "ignored", reason: "account_unavailable", ...event };
+  }
 
   const semanticCandidate = {
     ...candidate,
@@ -238,7 +253,9 @@ export async function maintainContinuityForStop(input, {
     timeoutMs: 30_000,
   });
   if (!decided.titleDecision && !decided.progressDecision) {
-    return { status: "ignored", reason: "semantic_decision_unavailable", ...event };
+    return change
+      ? { status: "renamed", change, progress: null, ...event }
+      : { status: "ignored", reason: "semantic_decision_unavailable", ...event };
   }
 
   let progressChanged = false;
@@ -260,7 +277,6 @@ export async function maintainContinuityForStop(input, {
     });
   }
 
-  let change = null;
   if (titleEligible && decided.titleDecision && appServer) {
     try {
       const titleAppServer = {
@@ -302,6 +318,15 @@ async function readHookInput() {
   return rawInput;
 }
 
+async function nativeTitleTurnId(filePath) {
+  try {
+    const value = JSON.parse(await readFile(filePath, "utf8"));
+    return Number(value?.schemaVersion) === 1 ? String(value?.turnId || "") : "";
+  } catch (_) {
+    return "";
+  }
+}
+
 async function main(rawInput) {
   const event = parseStopHookInput(rawInput);
   if (!event) return { status: "ignored", reason: "invalid_event" };
@@ -325,6 +350,7 @@ async function main(rawInput) {
       appServer,
       titleLedger,
       progressLedger,
+      nativeTitleTurnId: await nativeTitleTurnId(coordinate.nativeTitleTurnPath),
       command,
       codexAvailable: true,
     });

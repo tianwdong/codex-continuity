@@ -49,6 +49,48 @@ test("only an explicit control can lock and resume automatic title maintenance",
   assert.equal(ledger.shouldEvaluate(thread, "turn-1"), true);
 });
 
+test("records a same-workstream native chapter update as reversible", () => {
+  const ledger = new TitleLedger();
+  ledger.observe({ id: "thread-1", name: "Codex Continuity｜发布准备" });
+
+  assert.deepEqual(ledger.recordNativeChapterChange({
+    id: "thread-1",
+    name: "Codex Continuity｜原生标题刷新",
+  }, "turn-2"), {
+    threadId: "thread-1",
+    turnId: "turn-2",
+    previousTitle: "Codex Continuity｜发布准备",
+    title: "Codex Continuity｜原生标题刷新",
+  });
+  assert.deepEqual(ledger.undoCandidate("thread-1"), {
+    threadId: "thread-1",
+    previousTitle: "Codex Continuity｜发布准备",
+    title: "Codex Continuity｜原生标题刷新",
+  });
+  assert.equal(ledger.shouldEvaluate({
+    id: "thread-1",
+    name: "Codex Continuity｜原生标题刷新",
+  }, "turn-2"), false);
+});
+
+test("does not claim an unrelated or locked native title change", () => {
+  const unrelated = new TitleLedger();
+  unrelated.observe({ id: "thread-1", name: "Codex Continuity｜发布准备" });
+  assert.equal(unrelated.recordNativeChapterChange({
+    id: "thread-1",
+    name: "其他工作｜新章节",
+  }, "turn-2"), null);
+
+  const locked = new TitleLedger();
+  const thread = { id: "thread-1", name: "Codex Continuity｜发布准备" };
+  locked.observe(thread);
+  locked.setLocked(thread, true);
+  assert.equal(locked.recordNativeChapterChange({
+    ...thread,
+    name: "Codex Continuity｜原生标题刷新",
+  }, "turn-2"), null);
+});
+
 test("migrates legacy ambiguous locks back to automatic maintenance", () => {
   const ledger = new TitleLedger({
     schemaVersion: 1,

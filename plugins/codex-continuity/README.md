@@ -72,7 +72,7 @@ When you start a new task inside a project, Continuity checks whether one existi
 
 ### 2. See what each task has become · Core
 
-Codex can name a task from its first message, but the work may later move somewhere else. Continuity keeps a short local progress marker and only updates the native title after a clear chapter change. You can inspect, undo, lock, or resume automatic title maintenance at any time.
+Codex can name a task from its first message, but the work may later move somewhere else. After a later goal finishes with a reliable result, Continuity uses the current Codex host to refresh the native title only for a clear chapter change. A local progress marker keeps the change traceable and reversible. You can inspect, undo, lock, or resume automatic title maintenance at any time.
 
 ### 3. Quietly decide whether work should stay, branch, or start fresh · Core
 
@@ -138,9 +138,9 @@ An explicit **Do it here** immediately overrides any unexecuted automatic sugges
 
 ### After a completed turn: keep progress recognizable
 
-Codex still owns the initial title. After later turns, a `Stop` Hook immediately hands a bounded payload to a detached local worker, then gets out of the way. The worker extracts the current work chapter, one evidence-backed progress statement, and whether the work has moved far enough to justify a title update.
+Codex still owns the initial title. On later durable goals, the current Codex model decides whether completed work has entered a clearly different chapter. When it has, the current host calls the native title tool once before the final reply, so the visible sidebar and the active task use the same connection. A `Stop` Hook then hands a bounded payload to a detached local worker to record one evidence-backed progress statement and provide a conservative persistence fallback.
 
-Only a clear chapter change may update the native title. Small fixes, repeated conclusions, incomplete work, weak evidence, or model failure leave it untouched. Automatic title changes are reversible and can be locked per task.
+Only a clear chapter change may update the native title. Small fixes, repeated conclusions, incomplete work, weak evidence, locked titles, or model failure leave it untouched. The initial workstream stays stable, and automatic chapter changes remain reversible.
 
 ## Three moments, still no new workflow
 
@@ -189,7 +189,7 @@ Only a **Subagent** route enters the downstream delegation Skill; it does not ru
 - A recent Codex or ChatGPT Desktop installation
 - A working model/provider configuration in Codex
 
-Title and progress maintenance uses a compatibility-safe `Stop` Hook: the Hook entry returns immediately after launching a detached local worker, so it does not depend on Codex runtime support for asynchronous Hooks. macOS uses the bundled shell entry; Windows uses the official `commandWindows` override, native PowerShell, and the Desktop-bundled Node/Codex runtime when available. If matching works but titles never update, update Continuity and review the current Hook definition again.
+Continuity uses two official moments. `UserPromptSubmit` asks the current Codex model to route later durable goals and, after a verified chapter change, use the current host's native title tool. The compatibility-safe `Stop` Hook records progress and keeps a persistence fallback: its entry returns immediately after launching a detached local worker, so it does not depend on asynchronous Hook support. macOS uses the bundled shell entry; Windows uses the official `commandWindows` override, native PowerShell, and the Desktop-bundled Node/Codex runtime when available. If matching works but titles never update, update Continuity and review the current Hook definition again.
 
 If the plugin is installed but task matching, progress tracking, or title maintenance does not respond, open **Plugins → Installed → Codex Continuity**, select the gear beside **Hooks**, and confirm that the current Hook definition has been reviewed and trusted. The capability toggles above do not replace this step.
 
@@ -219,8 +219,8 @@ Continuity reuses Codex capabilities instead of recreating a conversation system
 | Moment | Native source of truth | Continuity adds | Failure behavior |
 | --- | --- | --- | --- |
 | First prompt in a new task | `UserPromptSubmit`, native task list and reads | Review up to three same-directory candidates | Continue the original prompt silently |
-| Each new durable goal | Implicitly invokable router Skill, current Codex model, and native tools | Quietly choose the smallest carrier; confirm only high-impact actions | Stay in the current task |
-| A turn completes | Async `Stop` Hook, `turn_id`, final assistant message | Extract chapter/progress; optionally request a title change | Preserve the existing title and progress |
+| Each later durable goal | `UserPromptSubmit`, router Skill, current Codex model, and native tools | Quietly choose the smallest carrier; after reliable current-task work, refresh only a changed chapter | Stay in the current task and preserve the title |
+| A turn completes | Detached `Stop` worker, `turn_id`, final assistant message | Record chapter/progress; preserve title metadata and fallback persistence | Preserve the existing title and progress |
 | User requests control | Plugin Skill | Inspect, undo, lock, or resume title maintenance | Make no task change |
 
 The semantic model makes bounded judgments; it does not own task state. Codex App Server remains authoritative for tasks, lineage, reads, and title operations. Uncertain paths fail closed.
@@ -239,7 +239,7 @@ Continuity intentionally does **not** provide:
 Current technical limits:
 
 - macOS is verified on a real Desktop installation; the native Windows path has automated contract coverage but still needs a real Windows Desktop acceptance run before its beta label is removed;
-- native sidebar title updates may appear with a delay because cross-connection `thread/name/set` changes are not always broadcast immediately;
+- immediate visible title refresh requires the current Codex host's native title tool; if that tool is unavailable, the detached fallback can persist the title but the sidebar may not show it until Codex reloads the task;
 - an unfinished background Hook may be cancelled when Codex closes the task;
 - the official Plugin UI does not yet expose a stable custom row/action slot in the task sidebar;
 - returning from a chat branch means reporting a result back to the parent task, not physically merging conversation histories.

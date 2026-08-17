@@ -1,6 +1,6 @@
 {
   "name": "codex-continuity",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Reuse existing Codex context, route durable work into the smallest fitting native container, and maintain task progress without a second task system.",
   "author": {
     "name": "Dong Tianwen",
@@ -25,7 +25,7 @@
   "interface": {
     "displayName": "Codex Continuity",
     "shortDescription": "Reuse existing context without adding a second task system.",
-    "longDescription": "On the first prompt of a new task, check once for one unique, high-confidence Codex task to continue. For each new durable goal, quietly use the current Codex model to choose the smallest fitting native path: stay in the current task, recommend or dispatch a subagent when authorized, suggest a persistent branch, or suggest a separate task. Current-task and low-confidence decisions stay silent; persistent task changes require confirmation. After completed turns, extract traceable progress and conservatively maintain the native title.",
+    "longDescription": "On the first prompt of a new task, check once for one unique, high-confidence Codex task to continue. For each later durable goal, quietly use the current Codex model to choose the smallest fitting native path: stay in the current task, recommend or dispatch a subagent when authorized, suggest a persistent branch, or suggest a separate task. Current-task and low-confidence decisions stay silent; persistent task changes require confirmation. After reliable current-task work enters a new chapter, use the current Codex host to refresh the native title while the Stop Hook records traceable progress and a conservative fallback.",
     "developerName": "Dong Tianwen",
     "category": "Productivity",
     "websiteURL": "https://github.com/tianwdong/codex-continuity",

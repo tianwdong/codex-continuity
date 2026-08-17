@@ -1,8 +1,9 @@
-import { mkdir, open } from "node:fs/promises";
+import { mkdir, open, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { pluginDataDirectory, threadStateCoordinate } from "./plugin-runtime.mjs";
+import { loadTitleLedger } from "./title-ledger.mjs";
 
 export function parsePromptHookInput(value) {
   let input = value;
@@ -46,9 +47,35 @@ export async function claimPromptCheck(filePath) {
   return true;
 }
 
-export function buildPromptHookOutput(event, { includeContextMatch = true } = {}) {
-  if (!event?.threadId || !String(event.cwd || "").trim()) return {};
-  if (!includeContextMatch) return {};
+export async function markNativeTitleTurn(filePath, event) {
+  await mkdir(path.dirname(filePath), { recursive: true, mode: 0o700 });
+  await writeFile(filePath, `${JSON.stringify({
+    schemaVersion: 1,
+    turnId: String(event?.turnId || ""),
+    markedAt: new Date().toISOString(),
+  })}\n`, { mode: 0o600 });
+}
+
+export function buildPromptHookOutput(event, {
+  includeContextMatch = true,
+  titleMaintenanceLocked = false,
+} = {}) {
+  if (!event?.threadId) return {};
+  if (!includeContextMatch) {
+    const titleInstruction = titleMaintenanceLocked
+      ? "Automatic task-title maintenance is locked. Never call set_thread_title."
+      : "Automatic task-title maintenance is unlocked for this turn. After reliable Current task work finishes, only for a clear durable chapter change, call native set_thread_title once before the final reply. Preserve the stable workstream and use workstream｜chapter. Skip side questions, same-chapter or minor work, incomplete/blocked/failed work, subagents, and low confidence. Do not announce title maintenance.";
+    return {
+      hookSpecificOutput: {
+        hookEventName: "UserPromptSubmit",
+        additionalContext: [
+          "For a later new durable goal, use Skill codex-continuity:continuity-work-router; one-shot side questions stay here.",
+          titleInstruction,
+        ].join(" "),
+      },
+    };
+  }
+  if (!String(event.cwd || "").trim()) return {};
   const threadId = String(event.threadId).slice(0, 64);
   const task = `Task: ${threadId}.`;
   const rawCwd = String(event.cwd || "");
@@ -72,10 +99,24 @@ async function main() {
   for await (const chunk of process.stdin) rawInput += chunk;
   const event = parsePromptHookInput(rawInput);
   if (!event) return {};
-  if (!event.cwd) return {};
   const coordinate = threadStateCoordinate(pluginDataDirectory(), event.threadId);
-  const includeContextMatch = await claimPromptCheck(coordinate.promptCheckPath);
-  return buildPromptHookOutput(event, { includeContextMatch });
+  const firstPrompt = await claimPromptCheck(coordinate.promptSeenPath);
+  if (firstPrompt && !event.cwd) return {};
+  const includeContextMatch = Boolean(event.cwd)
+    && await claimPromptCheck(coordinate.promptCheckPath);
+  let titleMaintenanceLocked = false;
+  if (!includeContextMatch) {
+    try {
+      const titleLedger = await loadTitleLedger(coordinate.statePath);
+      titleMaintenanceLocked = titleLedger.status(event.threadId).locked;
+      if (!titleMaintenanceLocked) {
+        await markNativeTitleTurn(coordinate.nativeTitleTurnPath, event);
+      }
+    } catch (_) {
+      titleMaintenanceLocked = true;
+    }
+  }
+  return buildPromptHookOutput(event, { includeContextMatch, titleMaintenanceLocked });
 }
 
 const isMain = process.argv[1]
