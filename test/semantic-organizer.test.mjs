@@ -312,6 +312,62 @@ cloudflare_docs  https://docs.example/mcp  -                     enabled  Unsupp
   assert.equal(parseMcpListOutput("unexpected output"), null);
 });
 
+test("isolates MCP discovery from an unsupported user reasoning effort", async () => {
+  const invocations = [];
+  const items = [{
+    threadId: "billing-thread",
+    nativeTitle: "接入 Google Analytics",
+    userMessage: "继续排查费用。",
+    assistantMessage: "Cloudflare 费用止损已经验证。",
+  }];
+  const spawnImpl = (command, args, options) => {
+    invocations.push({ command, args, options });
+    if (args[0] === "mcp") {
+      const child = new EventEmitter();
+      child.stdout = new PassThrough();
+      child.kill = () => true;
+      queueMicrotask(() => {
+        child.stdout.end("No MCP servers configured.\n");
+        child.emit("close", 0, null);
+      });
+      return child;
+    }
+    return fakeSpawn({
+      items: [{
+        threadId: "billing-thread",
+        decision: "keep",
+        workstream: "接入 Google Analytics",
+        titleChapter: "",
+        evidence: "",
+        confidence: "high",
+        progressDecision: "keep",
+        progressChapter: "",
+        progress: "",
+        progressEvidence: "",
+        progressConfidence: "low",
+      }],
+    })(command, args, options);
+  };
+
+  await decideTitlesWithCodex(items, {
+    command: "/test/codex",
+    cwd: "/tmp",
+    env: { PATH: "/test" },
+    spawnImpl,
+    timeoutMs: 100,
+  });
+
+  assert.deepEqual(invocations[0].args, [
+    "mcp",
+    "list",
+    "-c",
+    'model_reasoning_effort="low"',
+    "-c",
+    "features.plugins=false",
+  ]);
+  assert.equal(invocations[1].args[0], "exec");
+});
+
 test("runs Codex through an ephemeral read-only fake process", async () => {
   let invocation;
   const spawnImpl = (command, args, options) => {

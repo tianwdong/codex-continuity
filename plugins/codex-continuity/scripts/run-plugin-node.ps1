@@ -47,30 +47,62 @@ function Add-RuntimeCandidatesFromApp(
   }
 }
 
+function Add-NpmCodexCandidates(
+  [System.Collections.Generic.List[string]]$CodexCandidates
+) {
+  foreach ($command in @(Get-Command codex -All -ErrorAction SilentlyContinue)) {
+    $commandPath = $command.Source
+    if (-not $commandPath) { continue }
+    $nodeModules = Join-Path (Split-Path -Parent $commandPath) "node_modules\@openai\codex\node_modules"
+    if (-not (Test-Path -LiteralPath $nodeModules -PathType Container)) { continue }
+    foreach ($candidate in @(Get-ChildItem -LiteralPath $nodeModules -Filter codex.exe -File -Recurse -ErrorAction SilentlyContinue)) {
+      $CodexCandidates.Add($candidate.FullName)
+    }
+  }
+}
+
+function Find-UsableRuntime(
+  [System.Collections.Generic.List[string]]$Candidates
+) {
+  foreach ($candidate in @($Candidates | Select-Object -Unique)) {
+    try {
+      if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) { continue }
+      $null = & $candidate --version 2>$null
+      if ($LASTEXITCODE -eq 0) { return $candidate }
+    } catch {}
+  }
+  return $null
+}
+
 $nodeCandidates = [System.Collections.Generic.List[string]]::new()
 $codexCandidates = [System.Collections.Generic.List[string]]::new()
 if ($env:CODEX_CONTINUITY_NODE) {
   $nodeCandidates.Add($env:CODEX_CONTINUITY_NODE)
 }
-foreach ($processName in @("Codex", "ChatGPT")) {
-  foreach ($process in @(Get-Process -Name $processName -ErrorAction SilentlyContinue)) {
-    try {
-      Add-RuntimeCandidatesFromApp $nodeCandidates $codexCandidates $process.Path
-    } catch {}
-  }
+if ($env:CODEX_CLI_PATH) {
+  $codexCandidates.Add($env:CODEX_CLI_PATH)
 }
-$pathNode = Get-Command node.exe -ErrorAction SilentlyContinue | Select-Object -First 1
-if ($pathNode) {
-  $nodeCandidates.Add($pathNode.Source)
+foreach ($process in @(Get-Process -Name "ChatGPT" -ErrorAction SilentlyContinue)) {
+  try {
+    Add-RuntimeCandidatesFromApp $nodeCandidates $codexCandidates $process.Path
+  } catch {}
 }
 $pathCodex = Get-Command codex.exe -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($pathCodex) {
   $codexCandidates.Add($pathCodex.Source)
 }
+Add-NpmCodexCandidates $codexCandidates
+foreach ($process in @(Get-Process -Name "Codex" -ErrorAction SilentlyContinue)) {
+  try {
+    Add-RuntimeCandidatesFromApp $nodeCandidates $codexCandidates $process.Path
+  } catch {}
+}
+$pathNode = Get-Command node.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+if ($pathNode) {
+  $nodeCandidates.Add($pathNode.Source)
+}
 
-$nodeRuntime = $nodeCandidates |
-  Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) } |
-  Select-Object -First 1
+$nodeRuntime = Find-UsableRuntime $nodeCandidates
 
 $entryPoints = @{
   prompt = "src\plugin-prompt-hook.mjs"
@@ -80,9 +112,7 @@ $entryPoints = @{
 }
 
 if (-not $env:CODEX_CONTINUITY_CODEX) {
-  $codexRuntime = $codexCandidates |
-    Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Leaf) } |
-    Select-Object -First 1
+  $codexRuntime = Find-UsableRuntime $codexCandidates
   if ($codexRuntime) {
     $env:CODEX_CONTINUITY_CODEX = $codexRuntime
   }

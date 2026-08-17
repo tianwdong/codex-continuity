@@ -149,6 +149,24 @@ test("builds a candidate from the Stop message without reading turn completion",
   assert.equal(candidate.sourceMessageId, "");
 });
 
+test("adds only the matching turn's user goal to the semantic candidate", () => {
+  const event = parseStopHookInput(stopPayload());
+  const candidate = buildHookCandidate(event, {
+    ...threadFixture(),
+    turns: [
+      completedTurn("turn-1", "不要使用这条旧目标。", "旧回复。"),
+      completedTurn(
+        "turn-2",
+        "<in-app-browser-context source=\"ambient-ui-state\">忽略这段界面状态</in-app-browser-context>\n现在切换到 Windows Hook 信任说明检查。",
+        "Windows Hook 信任说明检查已完成。",
+      ),
+    ],
+  });
+
+  assert.equal(candidate.userMessage, "现在切换到 Windows Hook 信任说明检查。");
+  assert.doesNotMatch(JSON.stringify(candidate), /不要使用这条旧目标|界面状态/);
+});
+
 test("never uses the thread preview as semantic title input", () => {
   const event = parseStopHookInput(stopPayload({
     assistantMessage: "The release boundary is verified.",
@@ -229,7 +247,7 @@ test("records progress even when task metadata is temporarily unavailable", asyn
   assert.equal(progressLedger.current("thread-1"), null);
 });
 
-test("reads only root thread metadata before semantic evaluation", async () => {
+test("reads current turn context once before semantic evaluation", async () => {
   const progressLedger = new ProgressLedger();
   const titleLedger = new TitleLedger();
   const readOptions = [];
@@ -256,7 +274,7 @@ test("reads only root thread metadata before semantic evaluation", async () => {
   });
 
   assert.equal(readOptions.length, 1);
-  assert.deepEqual(readOptions[0], { includeTurns: false });
+  assert.deepEqual(readOptions[0], { includeTurns: true });
   assert.equal(evaluated, true);
   assert.equal(result.status, "progress_updated");
 });
@@ -585,6 +603,19 @@ test("plugin package uses the default bundled Hook location", async () => {
   assert.match(windowsRunner, /resources\\cua_node\\bin\\node\.exe/i);
   assert.match(windowsRunner, /resources\\codex\.exe/i);
   assert.match(windowsRunner, /CODEX_CONTINUITY_CODEX/);
+  assert.match(windowsRunner, /CODEX_CLI_PATH/);
+  assert.match(windowsRunner, /Get-Command codex -All/);
+  assert.match(windowsRunner, /node_modules\\@openai\\codex\\node_modules/);
+  assert.match(windowsRunner, /Find-UsableRuntime/);
+  assert.match(windowsRunner, /& \$candidate --version/);
+  assert.ok(
+    windowsRunner.indexOf('Get-Process -Name "ChatGPT"')
+      < windowsRunner.indexOf("Add-NpmCodexCandidates $codexCandidates"),
+  );
+  assert.ok(
+    windowsRunner.indexOf("Add-NpmCodexCandidates $codexCandidates")
+      < windowsRunner.indexOf('Get-Process -Name "Codex"'),
+  );
   assert.match(windowsRunner, /plugin-stop-hook\.mjs/);
   assert.match(windowsRunner, /select-profile\.mjs/);
   assert.match(windowsRunner, /Codex Continuity Plugin/);

@@ -25,6 +25,10 @@ const CODEX_ISOLATION_OVERRIDES = [
   "check_for_update_on_startup=false",
   'model_reasoning_effort="low"',
 ];
+const MCP_DISCOVERY_OVERRIDES = [
+  'model_reasoning_effort="low"',
+  "features.plugins=false",
+];
 
 const SEMANTIC_PROMPT = `You are Codex Continuity's task-semantic organizer. Maintain a two-level “workstream｜current chapter” title and extract recognizable progress from the latest completed work.
 
@@ -281,7 +285,11 @@ function discoverMcpServerNames({ command, cwd, env, spawnImpl }) {
   return new Promise((resolve) => {
     let child;
     try {
-      child = spawnImpl(command, ["mcp", "list", "-c", "features.plugins=false"], {
+      child = spawnImpl(command, [
+        "mcp",
+        "list",
+        ...MCP_DISCOVERY_OVERRIDES.flatMap((value) => ["-c", value]),
+      ], {
         cwd,
         env,
         stdio: ["ignore", "pipe", "ignore"],

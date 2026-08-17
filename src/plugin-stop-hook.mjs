@@ -31,6 +31,22 @@ function projectName(cwd) {
   return base.replaceAll("_", " ").replaceAll("-", " ").trim() || "Codex";
 }
 
+function currentTurnUserMessage(thread, turnId) {
+  const turn = (Array.isArray(thread?.turns) ? thread.turns : [])
+    .find((item) => String(item?.id || "").trim() === String(turnId || "").trim());
+  const userItem = (Array.isArray(turn?.items) ? turn.items : [])
+    .find((item) => item?.type === "userMessage");
+  const content = Array.isArray(userItem?.content)
+    ? userItem.content
+      .filter((part) => typeof part === "string" || part?.type === "text")
+      .map((part) => typeof part === "string" ? part : part.text)
+      .join("\n")
+    : userItem?.text;
+  return String(content || "")
+    .replace(/<in-app-browser-context\b[^>]*>[\s\S]*?<\/in-app-browser-context>\s*/gi, "")
+    .trim();
+}
+
 export function isSubagentThread(thread) {
   if (String(thread?.parentThreadId || "").trim()) return true;
   return [thread?.source, thread?.threadSource].some((source) => {
@@ -108,7 +124,7 @@ export function buildHookCandidate(event, thread, fallbackTitle = "") {
     sourceMessageId: "",
     project: projectName(event.cwd || thread?.cwd),
     nativeTitle: title,
-    userMessage: "",
+    userMessage: currentTurnUserMessage(thread, event.turnId),
     assistantMessage: event.assistantMessage,
     turnCount,
     titleMetadataAvailable: Boolean(observedTitle),
@@ -135,7 +151,7 @@ export async function maintainContinuityForStop(input, {
   }
   let thread = null;
   try {
-    thread = (await appServer.readThread(event.threadId, { includeTurns: false }))?.thread ?? null;
+    thread = (await appServer.readThread(event.threadId, { includeTurns: true }))?.thread ?? null;
   } catch (_) {}
   if (thread && isSubagentThread(thread)) {
     return { status: "ignored", reason: "subagent_thread", ...event };
