@@ -37,9 +37,18 @@ Install the Codex Continuity plugin from this repository:
 https://github.com/tianwdong/codex-continuity
 
 Use the repository's Codex Marketplace entry. When installation finishes, tell me when to restart Desktop and guide me through reviewing the plugin Hooks.
+
+After restart, guide me to **Plugins → Installed → Codex Continuity**, then tell me to scroll to **Hooks**, select the gear on the right, and review and trust the Hook definition.
 ```
 
-After installation, restart Desktop and review and trust **Codex Continuity** when Codex asks. You do not need to remember an install command.
+After installation, complete this once:
+
+1. Restart Codex or ChatGPT Desktop.
+2. Open **Plugins** in the left sidebar, go to **Installed**, and select **Codex Continuity**.
+3. Scroll to **Hooks** and select the gear on the far right of that row.
+4. Review and trust the Codex Continuity Hook, then start a new task.
+
+The four capability toggles above are separate from Hook review: enabled toggles do not mean the Hook has been trusted. You do not need to remember an install command.
 
 <details>
 <summary>Prefer installing it yourself?</summary>
@@ -49,7 +58,7 @@ codex plugin marketplace add tianwdong/codex-continuity
 codex plugin add codex-continuity@codex-continuity
 ```
 
-Restart Desktop, then review and trust **Codex Continuity** in Hook management. The repository Marketplace installs only the allowlisted `plugins/codex-continuity/` bundle.
+Restart Desktop, then open **Plugins → Installed → Codex Continuity**, scroll to **Hooks**, select the gear on the right, and review and trust the Hook definition. The repository Marketplace installs only the allowlisted `plugins/codex-continuity/` bundle.
 
 </details>
 
@@ -181,6 +190,8 @@ Only a **Subagent** route enters the downstream delegation Skill; it does not ru
 - A working model/provider configuration in Codex
 
 Title and progress maintenance depends on an asynchronous `Stop` Hook. The macOS path has been verified with the Desktop-bundled `codex 0.148.0-alpha.9`. Windows uses the official `commandWindows` Hook override, native PowerShell, and the Desktop-bundled Node/Codex runtime when available. The standalone `codex 0.146.1` loads first-prompt matching but skips asynchronous `Stop` Hooks. If matching works but titles never update, update Desktop first.
+
+If the plugin is installed but task matching, progress tracking, or title maintenance does not respond, open **Plugins → Installed → Codex Continuity**, select the gear beside **Hooks**, and confirm that the current Hook definition has been reviewed and trusted. The capability toggles above do not replace this step.
 
 ## Privacy and control
 

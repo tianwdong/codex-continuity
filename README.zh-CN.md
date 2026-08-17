@@ -37,9 +37,18 @@
 https://github.com/tianwdong/codex-continuity
 
 请使用仓库里的 Codex Marketplace。安装好后，告诉我什么时候重启 Desktop，以及在哪里审核并信任 Hook。
+
+重启后，请引导我打开左侧「插件」→「已安装」→「Codex Continuity」，向下滚动到「钩子」，点击右侧齿轮并完成审核与信任。
 ```
 
-安装完成后，照着 Codex 的提示重启 Desktop，并审核、信任 **Codex Continuity**。不需要记命令。
+安装完成后只需要做一次：
+
+1. 重启 Codex／ChatGPT Desktop；
+2. 打开左侧「插件」，进入「已安装」，选择 **Codex Continuity**；
+3. 向下滚动到「钩子」，点击这一行最右侧的齿轮；
+4. 审核并信任 Codex Continuity Hook，然后新建一个任务开始使用。
+
+页面上方的 4 个功能开关和下面的 Hook 审核是两回事：开关已经打开，不代表 Hook 已被信任。整个过程不需要记命令。
 
 <details>
 <summary>想自己用命令安装？</summary>
@@ -49,7 +58,7 @@ codex plugin marketplace add tianwdong/codex-continuity
 codex plugin add codex-continuity@codex-continuity
 ```
 
-重启 Desktop，然后在 Hook 管理页审核并信任 **Codex Continuity**。仓库 Marketplace 只会安装白名单内的 `plugins/codex-continuity/` 插件包。
+重启 Desktop，然后打开左侧「插件」→「已安装」→ **Codex Continuity**，向下滚动到「钩子」，点击右侧齿轮并完成审核与信任。仓库 Marketplace 只会安装白名单内的 `plugins/codex-continuity/` 插件包。
 
 </details>
 
@@ -155,6 +164,8 @@ Continuity 让标题反映任务现在真正做到哪里，而不是永远停在
 - Codex 已经可以正常登录和使用模型。
 
 macOS 已在真实 Desktop 中验证。Windows 版本已经通过自动化测试，但还缺一次真实 Windows 11 Desktop 验收，因此目前仍按 beta 支持。如果能匹配旧任务、但标题始终不更新，请先升级 Desktop。
+
+如果插件已经安装，但首次匹配、进展记录或标题维护没有反应，先打开左侧「插件」→「已安装」→ **Codex Continuity**，在「钩子」一栏点击右侧齿轮，确认当前 Hook 定义已经审核并信任。页面上方的功能开关不能代替这一步。
 
 <details>
 <summary>查看版本与运行时细节</summary>

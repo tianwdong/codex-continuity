@@ -70,11 +70,17 @@ test("bilingual READMEs link to each other and document direct installation", as
   assert.match(englishReadme, /href="\.\/README\.zh-CN\.md">简体中文<\/a>/);
   assert.match(chineseReadme, /href="\.\/README\.md">English<\/a>/);
   assert.match(englishReadme, /When you state a new goal, Continuity quietly judges/);
+  assert.match(englishReadme, /Plugins → Installed → Codex Continuity/);
+  assert.match(englishReadme, /select the gear on the far right/);
+  assert.match(englishReadme, /enabled toggles do not mean the Hook has been trusted/);
   assert.match(englishReadme, /Current-task and low-confidence decisions stay completely silent/);
   assert.match(englishReadme, /explicit standing authorization/);
   assert.match(englishReadme, /Persistent branches, separate tasks, returns, and archives always require confirmation/);
   assert.doesNotMatch(englishReadme, /The other two appear only when you ask/);
   assert.match(chineseReadme, /别再翻一排 Codex 任务/);
+  assert.match(chineseReadme, /左侧「插件」→「已安装」→「Codex Continuity」/);
+  assert.match(chineseReadme, /点击这一行最右侧的齿轮/);
+  assert.match(chineseReadme, /开关已经打开，不代表 Hook 已被信任/);
   assert.match(chineseReadme, /拿不准时，Continuity 就留在当前任务，不打扰你/);
   assert.match(chineseReadme, /你已经授权自动委派时/);
   assert.match(chineseReadme, /开支线、新建任务、回传结果和归档旧任务前，Continuity 都会先征求你的确认/);
