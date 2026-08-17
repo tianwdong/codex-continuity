@@ -30,4 +30,4 @@ if [ -z "$node_runtime" ]; then
   exit 0
 fi
 
-exec "$node_runtime" "$plugin_root/src/plugin-stop-hook.mjs"
+exec "$node_runtime" "$plugin_root/src/plugin-stop-hook.mjs" --launch

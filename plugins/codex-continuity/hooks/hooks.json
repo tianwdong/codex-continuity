@@ -23,7 +23,6 @@
             "command": "/bin/sh \"$PLUGIN_ROOT/scripts/run-stop-hook.sh\"",
             "commandWindows": "powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"${PLUGIN_ROOT}\\scripts\\run-plugin-node.ps1\" -Mode stop",
             "statusMessage": "Updating task status…",
-            "async": true,
             "timeout": 60
           }
         ]

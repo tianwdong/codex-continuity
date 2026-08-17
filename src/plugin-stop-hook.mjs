@@ -1,3 +1,4 @@
+import { spawn as nodeSpawn } from "node:child_process";
 import { appendFile, mkdir } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -102,6 +103,58 @@ export function parseStopHookInput(value) {
 
 export function buildStopHookOutput() {
   return {};
+}
+
+export async function launchStopHookWorker(rawInput, {
+  spawnImpl = nodeSpawn,
+  nodeExecutable = process.execPath,
+  scriptPath = fileURLToPath(import.meta.url),
+  env = childEnvironment(),
+} = {}) {
+  const event = parseStopHookInput(rawInput);
+  if (!event) return { status: "ignored", reason: "invalid_event" };
+  if (event.stopHookActive) {
+    return { status: "ignored", reason: "continued_stop", ...event };
+  }
+
+  return new Promise((resolve) => {
+    let child;
+    let settled = false;
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
+    const fail = (reason) => {
+      try { child?.kill?.(); } catch (_) {}
+      finish({ status: "error", reason, threadId: event.threadId, turnId: event.turnId });
+    };
+
+    try {
+      child = spawnImpl(nodeExecutable, [scriptPath, "--worker"], {
+        detached: true,
+        env,
+        stdio: ["pipe", "ignore", "ignore"],
+        windowsHide: true,
+      });
+    } catch (_) {
+      fail("worker_spawn_failed");
+      return;
+    }
+
+    child.once("error", () => fail("worker_spawn_failed"));
+    child.once("spawn", () => {
+      if (!child.stdin) {
+        fail("worker_stdin_unavailable");
+        return;
+      }
+      child.stdin.once("error", () => fail("worker_input_failed"));
+      child.stdin.end(rawInput, () => {
+        try { child.unref(); } catch (_) {}
+        finish({ status: "launched", threadId: event.threadId, turnId: event.turnId });
+      });
+    });
+  });
 }
 
 export function buildHookCandidate(event, thread, fallbackTitle = "") {
@@ -242,10 +295,14 @@ async function writeDiagnostic(dataDirectory, result) {
   await appendFile(path.join(dataDirectory, "continuity.log"), `${line}\n`, { mode: 0o600 });
 }
 
-async function main() {
+async function readHookInput() {
   process.stdin.setEncoding("utf8");
   let rawInput = "";
   for await (const chunk of process.stdin) rawInput += chunk;
+  return rawInput;
+}
+
+async function main(rawInput) {
   const event = parseStopHookInput(rawInput);
   if (!event) return { status: "ignored", reason: "invalid_event" };
   if (event.stopHookActive) return { status: "ignored", reason: "continued_stop", ...event };
@@ -286,7 +343,17 @@ async function main() {
 const isMain = process.argv[1]
   && fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
 if (isMain) {
-  main()
+  readHookInput()
+    .then(async (rawInput) => {
+      if (process.argv.includes("--launch")) {
+        const result = await launchStopHookWorker(rawInput);
+        if (result.status === "error") {
+          await writeDiagnostic(pluginDataDirectory(), result);
+        }
+        return result;
+      }
+      return main(rawInput);
+    })
     .then((result) => {
       process.stdout.write(`${JSON.stringify(buildStopHookOutput(result))}\n`);
     })

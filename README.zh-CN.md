@@ -163,14 +163,14 @@ Continuity 让标题反映任务现在真正做到哪里，而不是永远停在
 - 较新的 Codex 或 ChatGPT Desktop；
 - Codex 已经可以正常登录和使用模型。
 
-macOS 已在真实 Desktop 中验证。Windows 版本已经通过自动化测试，但还缺一次真实 Windows 11 Desktop 验收，因此目前仍按 beta 支持。如果能匹配旧任务、但标题始终不更新，请先升级 Desktop。
+macOS 和 Windows 11 都已在真实 Desktop 中验证。如果能匹配旧任务、但标题始终不更新，请先更新 Continuity，然后重新审核当前 Hook。
 
 如果插件已经安装，但首次匹配、进展记录或标题维护没有反应，先打开左侧「插件」→「已安装」→ **Codex Continuity**，在「钩子」一栏点击右侧齿轮，确认当前 Hook 定义已经审核并信任。页面上方的功能开关不能代替这一步。
 
 <details>
 <summary>查看版本与运行时细节</summary>
 
-标题和进展维护依赖异步 `Stop` Hook。macOS 已在 Desktop 内置 `codex 0.148.0-alpha.9` 验证。Windows 使用官方 `commandWindows`、原生 PowerShell，并优先复用 Desktop 内置的 Node／Codex runtime。独立 `codex 0.146.1` 会加载首次任务匹配，但会跳过异步 `Stop` Hook。
+标题和进展维护使用兼容型 `Stop` Hook：Hook 入口启动本地后台 worker 后立即返回，不依赖 Codex runtime 是否支持异步 Hook。macOS 使用插件自带的 Shell 入口；Windows 使用官方 `commandWindows`、原生 PowerShell，并优先复用 Desktop 内置的 Node／Codex runtime。
 
 </details>
 
@@ -201,7 +201,7 @@ Continuity 直接复用 Codex 的任务、模型和原生操作，不另外维�
 | --- | --- | --- | --- |
 | 新任务第一次输入 | `UserPromptSubmit`、原生任务列表和任务读取 | 检查最多 3 个同目录候选 | 直接执行原请求 |
 | 你提出新目标 | 路由 Skill、当前 Codex 模型和原生工具 | 判断继续、并行、开支线还是新建任务 | 留在当前任务 |
-| 一轮工作完成 | 异步 `Stop` Hook、`turn_id` 和最终回复 | 提取短进展，必要时更新标题 | 保留现有标题和进展 |
+| 一轮工作完成 | `Stop` Hook、本地后台 worker、`turn_id` 和最终回复 | 提取短进展，必要时更新标题 | 保留现有标题和进展 |
 | 你要求查看或撤销 | 插件 Skill | 查看、撤销、暂停或恢复标题维护 | 不改变任务 |
 
 模型只负责判断，不拥有任务状态。任务关系、读取和标题操作仍以 Codex App Server 为准；任何一步拿不准，插件都会保持原状。

@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { EventEmitter } from "node:events";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { Writable } from "node:stream";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -10,6 +12,7 @@ import {
   buildStopHookOutput,
   buildHookCandidate,
   isSubagentThread,
+  launchStopHookWorker,
   maintainContinuityForStop,
   parseStopHookInput,
 } from "../src/plugin-stop-hook.mjs";
@@ -91,6 +94,51 @@ test("never creates a continuation prompt for sidebar refresh", () => {
     status: "renamed",
     change: { title: "Codex Continuity 开源发布准备" },
   }), {});
+});
+
+test("launches Stop maintenance as a detached worker without losing the Hook payload", async () => {
+  let received = "";
+  let unrefCalled = false;
+  let spawnCall = null;
+  const child = new EventEmitter();
+  child.stdin = new Writable({
+    write(chunk, _encoding, callback) {
+      received += chunk.toString();
+      callback();
+    },
+  });
+  child.unref = () => { unrefCalled = true; };
+  const spawnImpl = (command, args, options) => {
+    spawnCall = { command, args, options };
+    queueMicrotask(() => child.emit("spawn"));
+    return child;
+  };
+  const rawInput = JSON.stringify(stopPayload());
+
+  const result = await launchStopHookWorker(rawInput, {
+    spawnImpl,
+    nodeExecutable: "/test/node",
+    scriptPath: "/plugin/plugin-stop-hook.mjs",
+    env: { PATH: "/test/bin" },
+  });
+
+  assert.deepEqual(result, {
+    status: "launched",
+    threadId: "thread-1",
+    turnId: "turn-2",
+  });
+  assert.deepEqual(spawnCall, {
+    command: "/test/node",
+    args: ["/plugin/plugin-stop-hook.mjs", "--worker"],
+    options: {
+      detached: true,
+      env: { PATH: "/test/bin" },
+      stdio: ["pipe", "ignore", "ignore"],
+      windowsHide: true,
+    },
+  });
+  assert.equal(received, rawInput);
+  assert.equal(unrefCalled, true);
 });
 
 test("ignores a Stop already continued by another hook", async () => {
@@ -591,7 +639,7 @@ test("plugin package uses the default bundled Hook location", async () => {
   assert.equal(manifest.version, packageJson.version);
   assert.equal(manifest.hooks, undefined);
   assert.equal(hooks.hooks.UserPromptSubmit[0].hooks[0].async, false);
-  assert.equal(hooks.hooks.Stop[0].hooks[0].async, true);
+  assert.notEqual(hooks.hooks.Stop[0].hooks[0].async, true);
   assert.equal(hooks.hooks.Stop[0].hooks[0].statusMessage, "Updating task status…");
   assert.match(hooks.hooks.Stop[0].hooks[0].command, /PLUGIN_ROOT/);
   assert.match(hooks.hooks.Stop[0].hooks[0].commandWindows, /powershell\.exe/);
@@ -600,6 +648,7 @@ test("plugin package uses the default bundled Hook location", async () => {
   assert.match(hooks.hooks.Stop[0].hooks[0].commandWindows, /run-plugin-node\.ps1/);
   assert.match(runner, /cua_node\/bin\/node/);
   assert.match(runner, /plugin-stop-hook\.mjs/);
+  assert.match(runner, /--launch/);
   assert.match(windowsRunner, /resources\\cua_node\\bin\\node\.exe/i);
   assert.match(windowsRunner, /resources\\codex\.exe/i);
   assert.match(windowsRunner, /CODEX_CONTINUITY_CODEX/);
@@ -617,6 +666,7 @@ test("plugin package uses the default bundled Hook location", async () => {
       < windowsRunner.indexOf('Get-Process -Name "Codex"'),
   );
   assert.match(windowsRunner, /plugin-stop-hook\.mjs/);
+  assert.match(windowsRunner, /\$Mode -eq "stop"[\s\S]*?--launch/);
   assert.match(windowsRunner, /select-profile\.mjs/);
   assert.match(windowsRunner, /Codex Continuity Plugin/);
   assert.equal(packageJson.scripts.start, "npm run build:plugin");
@@ -662,6 +712,35 @@ test("the bundled shell runner accepts Hook JSON on stdin", async () => {
       },
     });
     assert.equal(output.trim(), "{}");
+  } finally {
+    await rm(dataDirectory, { recursive: true, force: true });
+  }
+});
+
+test("the shell runner returns before detached Stop maintenance completes", async () => {
+  const dataDirectory = await mkdtemp(path.join(os.tmpdir(), "continuity-hook-worker-test-"));
+  try {
+    const output = execFileSync("/bin/sh", [fileURLToPath(new URL("../scripts/run-stop-hook.sh", import.meta.url))], {
+      input: `${JSON.stringify(stopPayload())}\n`,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        PLUGIN_ROOT: fileURLToPath(new URL("../", import.meta.url)),
+        CODEX_CONTINUITY_CODEX: "/usr/bin/false",
+        CODEX_CONTINUITY_DATA: dataDirectory,
+      },
+    });
+    assert.equal(output.trim(), "{}");
+
+    let diagnostic = "";
+    for (let attempt = 0; attempt < 40 && !diagnostic; attempt += 1) {
+      try {
+        diagnostic = await readFile(path.join(dataDirectory, "continuity.log"), "utf8");
+      } catch (_) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+    }
+    assert.match(diagnostic, /thread_metadata_unavailable thread-1 turn-2/);
   } finally {
     await rm(dataDirectory, { recursive: true, force: true });
   }

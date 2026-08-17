@@ -140,7 +140,9 @@ if (-not $nodeRuntime) {
 
 $entryPoint = Join-Path $pluginRoot $entryPoints[$Mode]
 $entryArguments = @()
-if ($Mode -eq "title") {
+if ($Mode -eq "stop") {
+  $entryArguments = @("--launch")
+} elseif ($Mode -eq "title") {
   if (-not $Operation) {
     Write-Output '{"ok":false,"error":"operation_unavailable"}'
     exit 1

@@ -138,7 +138,7 @@ An explicit **Do it here** immediately overrides any unexecuted automatic sugges
 
 ### After a completed turn: keep progress recognizable
 
-Codex still owns the initial title. After later turns, an asynchronous `Stop` Hook reads a bounded slice of the final reply and extracts the current work chapter, one evidence-backed progress statement, and whether the work has moved far enough to justify a title update.
+Codex still owns the initial title. After later turns, a `Stop` Hook immediately hands a bounded payload to a detached local worker, then gets out of the way. The worker extracts the current work chapter, one evidence-backed progress statement, and whether the work has moved far enough to justify a title update.
 
 Only a clear chapter change may update the native title. Small fixes, repeated conclusions, incomplete work, weak evidence, or model failure leave it untouched. Automatic title changes are reversible and can be locked per task.
 
@@ -189,7 +189,7 @@ Only a **Subagent** route enters the downstream delegation Skill; it does not ru
 - A recent Codex or ChatGPT Desktop installation
 - A working model/provider configuration in Codex
 
-Title and progress maintenance depends on an asynchronous `Stop` Hook. The macOS path has been verified with the Desktop-bundled `codex 0.148.0-alpha.9`. Windows uses the official `commandWindows` Hook override, native PowerShell, and the Desktop-bundled Node/Codex runtime when available. The standalone `codex 0.146.1` loads first-prompt matching but skips asynchronous `Stop` Hooks. If matching works but titles never update, update Desktop first.
+Title and progress maintenance uses a compatibility-safe `Stop` Hook: the Hook entry returns immediately after launching a detached local worker, so it does not depend on Codex runtime support for asynchronous Hooks. macOS uses the bundled shell entry; Windows uses the official `commandWindows` override, native PowerShell, and the Desktop-bundled Node/Codex runtime when available. If matching works but titles never update, update Continuity and review the current Hook definition again.
 
 If the plugin is installed but task matching, progress tracking, or title maintenance does not respond, open **Plugins → Installed → Codex Continuity**, select the gear beside **Hooks**, and confirm that the current Hook definition has been reviewed and trusted. The capability toggles above do not replace this step.
 
