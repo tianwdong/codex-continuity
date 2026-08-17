@@ -674,6 +674,8 @@ test("plugin package uses the default bundled Hook location", async () => {
   const hooks = JSON.parse(await readFile(new URL("../hooks/hooks.json", import.meta.url)));
   const runner = await readFile(new URL("../scripts/run-stop-hook.sh", import.meta.url), "utf8");
   const windowsRunner = await readFile(new URL("../scripts/run-plugin-node.ps1", import.meta.url), "utf8");
+  const appServerClient = await readFile(new URL("../src/app-server-client.mjs", import.meta.url), "utf8");
+  const titleDecision = await readFile(new URL("../src/plugin-title-decision.mjs", import.meta.url), "utf8");
   const buildScript = await readFile(new URL("../scripts/build-plugin.sh", import.meta.url), "utf8");
   const installScript = await readFile(new URL("../scripts/install-plugin-dev.sh", import.meta.url), "utf8");
   const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url)));
@@ -685,6 +687,7 @@ test("plugin package uses the default bundled Hook location", async () => {
   assert.equal(hooks.hooks.Stop[0].hooks[0].statusMessage, "Updating task status…");
   assert.match(hooks.hooks.Stop[0].hooks[0].command, /PLUGIN_ROOT/);
   assert.match(hooks.hooks.Stop[0].hooks[0].commandWindows, /powershell\.exe/);
+  assert.match(hooks.hooks.Stop[0].hooks[0].commandWindows, /-WindowStyle Hidden/);
   assert.match(hooks.hooks.Stop[0].hooks[0].commandWindows, /\$\{PLUGIN_ROOT\}/);
   assert.doesNotMatch(hooks.hooks.Stop[0].hooks[0].commandWindows, /\$env:PLUGIN_ROOT/);
   assert.match(hooks.hooks.Stop[0].hooks[0].commandWindows, /run-plugin-node\.ps1/);
@@ -711,6 +714,8 @@ test("plugin package uses the default bundled Hook location", async () => {
   assert.match(windowsRunner, /\$Mode -eq "stop"[\s\S]*?--launch/);
   assert.match(windowsRunner, /select-profile\.mjs/);
   assert.match(windowsRunner, /Codex Continuity Plugin/);
+  assert.match(appServerClient, /windowsHide:\s*true/);
+  assert.equal(titleDecision.match(/windowsHide:\s*true/g)?.length, 2);
   assert.equal(packageJson.scripts.start, "npm run build:plugin");
   assert.equal(packageJson.scripts["install:plugin:dev"], "bash scripts/install-plugin-dev.sh");
   assert.match(buildScript, /runtime_files=/);

@@ -241,6 +241,7 @@ test("plugin package includes the prompt Hook, matching Skill, work router, and 
   assert.equal(handler.statusMessage, undefined);
   assert.match(handler.command, /run-prompt-hook\.sh/);
   assert.match(handler.commandWindows, /powershell\.exe/);
+  assert.match(handler.commandWindows, /-WindowStyle Hidden/);
   assert.match(handler.commandWindows, /run-plugin-node\.ps1/);
   assert.match(handler.commandWindows, /-Mode prompt/);
   assert.match(handler.commandWindows, /\$\{PLUGIN_ROOT\}/);

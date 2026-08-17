@@ -2,13 +2,14 @@ import { spawn } from "node:child_process";
 import readline from "node:readline";
 
 const REQUEST_TIMEOUT_MS = 30_000;
-export const APP_SERVER_CLIENT_VERSION = "0.1.7";
+export const APP_SERVER_CLIENT_VERSION = "0.1.8";
 
 export class AppServerClient {
   constructor({ command = "codex", args = ["app-server"], env = process.env } = {}) {
     this.child = spawn(command, args, {
       env,
       stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true,
     });
     this.sequence = 0;
     this.pending = new Map();

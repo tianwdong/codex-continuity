@@ -293,6 +293,7 @@ function discoverMcpServerNames({ command, cwd, env, spawnImpl }) {
         cwd,
         env,
         stdio: ["ignore", "pipe", "ignore"],
+        windowsHide: true,
       });
     } catch (_) {
       resolve({ ok: false });
@@ -358,6 +359,7 @@ function runCodexExec({ command, cwd, env, payload, spawnImpl, timeoutMs, mcpSer
         cwd,
         env,
         stdio: ["pipe", "pipe", "pipe"],
+        windowsHide: true,
       });
     } catch (_) {
       resolve({ ok: false });
