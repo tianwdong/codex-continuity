@@ -72,7 +72,7 @@ When you start a new task inside a project, Continuity checks whether one existi
 
 ### 2. See what each task has become · Core
 
-Codex can name a task from its first message, but the work may later move somewhere else. After a later goal finishes with a reliable result, Continuity uses the current Codex host to refresh the native title only for a clear chapter change. A local progress marker keeps the change traceable and reversible. You can inspect, undo, lock, or resume automatic title maintenance at any time.
+Codex can name a task from its first message, but the work may later move somewhere else. After a later goal finishes with a reliable result, Continuity uses the current Codex host to refresh the native title for a clear chapter change—or, when the old workstream would now mislead you, for a proven durable direction change. A local progress marker keeps the change traceable and reversible. You can inspect, undo, lock, or resume automatic title maintenance at any time.
 
 ### 3. Quietly decide whether work should stay, branch, or start fresh · Core
 
@@ -140,7 +140,7 @@ An explicit **Do it here** immediately overrides any unexecuted automatic sugges
 
 Codex still owns the initial title. On later durable goals, the current Codex model decides whether completed work has entered a clearly different chapter. When it has, the current host calls the native title tool once before the final reply, so the visible sidebar and the active task use the same connection. A `Stop` Hook then hands a bounded payload to a detached local worker to record one evidence-backed progress statement and provide a conservative persistence fallback.
 
-Only a clear chapter change may update the native title. Small fixes, repeated conclusions, incomplete work, weak evidence, locked titles, or model failure leave it untouched. The initial workstream stays stable, and automatic chapter changes remain reversible.
+The workstream stays stable by default. It changes only after an explicit primary-goal shift, or after the previous reliable chapter and current completed turn consistently center a new durable context and the old workstream would mislead future return. Small fixes, repeated conclusions, incomplete work, weak evidence, locked titles, or model failure leave it untouched. Chapter and workstream updates remain reversible.
 
 ## Three moments, still no new workflow
 

@@ -140,7 +140,7 @@ export class TitleLedger {
     return true;
   }
 
-  recordNativeChapterChange(thread, turnId) {
+  recordNativeTitleChange(thread, turnId) {
     const { threadId, title } = threadCoordinate(thread);
     const previous = this.state.threads[threadId];
     const previousTitle = normalizedTitle(previous?.observedTitle);
@@ -151,8 +151,10 @@ export class TitleLedger {
       || !previousTitle
       || previous?.locked
       || previousTitle === title
-      || !title.includes("｜")
-      || titleWorkstream(previousTitle) !== titleWorkstream(title)) return null;
+      || !title.includes("｜")) return null;
+    const decision = titleWorkstream(previousTitle) === titleWorkstream(title)
+      ? "update_chapter"
+      : "replace_workstream";
     if (!this.recordApplied({
       threadId,
       previousTitle,
@@ -161,7 +163,7 @@ export class TitleLedger {
       sourceMessageId: "",
       confidence: "high",
     })) return null;
-    return { threadId, turnId: candidateTurnId, previousTitle, title };
+    return { threadId, turnId: candidateTurnId, previousTitle, title, decision };
   }
 
   undoCandidate(value) {

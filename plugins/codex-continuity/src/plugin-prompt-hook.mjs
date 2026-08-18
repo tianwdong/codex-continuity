@@ -65,7 +65,7 @@ export function buildPromptHookOutput(event, {
   if (!includeContextMatch) {
     const titleInstruction = titleMaintenanceLocked
       ? "Automatic task-title maintenance is locked. Never call set_thread_title."
-      : "Automatic task-title maintenance is unlocked for this turn. After reliable Current task work finishes, only for a clear durable chapter change, call native set_thread_title once before the final reply. Preserve the stable workstream and use workstream｜chapter. Skip side questions, same-chapter or minor work, incomplete/blocked/failed work, subagents, and low confidence. Do not announce title maintenance.";
+      : "Title maintenance unlocked. After reliable work, call set_thread_title once before final reply for a durable title change. Keep workstream by default; replace only after explicit primary-goal shift, or when prior reliable chapter and this completed turn share a durable context and old workstream misleads return. Route unrelated durable work elsewhere. Use workstream｜chapter. Skip side/minor/same-chapter, incomplete/failed/blocked, subagent, or low-confidence work. Stay silent.";
     return {
       hookSpecificOutput: {
         hookEventName: "UserPromptSubmit",

@@ -38,12 +38,14 @@ The initial task title belongs to Codex. On a later root-task turn, maintain the
 
 After a **Current task** route has produced a reliable completed result, decide whether the durable work chapter—not merely the next step—has clearly changed. If it has:
 
-1. Preserve the stable workstream from the current native title. If the title already uses `workstream｜chapter`, keep the text before `｜`; otherwise use the complete current title as the workstream.
-2. Create one concise, outcome-oriented chapter phrase. Do not use a status word, internal function, command, mechanical fix, or next action as the chapter.
-3. Before the final reply, call the native `set_thread_title` tool exactly once with `workstream｜chapter`. This current-host call owns immediate sidebar visibility; the `Stop` Hook remains the progress recorder and fallback.
-4. Do not mention title maintenance unless the user asks.
+1. Read the current workstream from the native title. If the title already uses `workstream｜chapter`, the text before `｜` is the workstream; otherwise the complete title is the workstream.
+2. Keep that workstream by default. Replace it only when the user explicitly switched the primary durable objective, or when both the previous reliable chapter and the current completed result consistently center the same new durable context and the old workstream would mislead the user's next return.
+3. Keep unrelated durable work in the branch or new-task decision above instead of repurposing this task.
+4. Create one concise, outcome-oriented chapter phrase. Do not use a status word, internal function, command, mechanical fix, or next action as the chapter.
+5. Before the final reply, call the native `set_thread_title` tool exactly once with `workstream｜chapter`. This current-host call owns immediate sidebar visibility; the `Stop` Hook remains the progress recorder and fallback.
+6. Do not mention title maintenance unless the user asks.
 
-Skip this step for the first task turn, one-shot side questions, a delegated or subagent task, a branch that should keep its own identity, the same chapter, minor fixes, wording or test-only refinements, partial or failed work, blocked work, low confidence, a missing stable workstream, an unavailable native title tool, or any context that says title maintenance is locked. Never replace the workstream automatically; unrelated durable work belongs in the branch or new-task decision above.
+Skip this step for the first task turn, one-shot side questions, a delegated or subagent task, a branch that should keep its own identity, the same chapter, minor fixes, wording or test-only refinements, partial or failed work, blocked work, low confidence, a missing stable workstream, an unavailable native title tool, or any context that says title maintenance is locked.
 
 ## Hand a selected native subagent route to dispatch
 

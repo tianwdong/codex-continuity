@@ -224,12 +224,12 @@ export async function maintainContinuityForStop(input, {
     return { status: "ignored", reason: "thread_metadata_unavailable", ...event };
   }
   const nativeTitleChange = String(nativeTitleTurnId || "") === event.turnId
-    ? titleLedger.recordNativeChapterChange(thread, event.turnId)
+    ? titleLedger.recordNativeTitleChange(thread, event.turnId)
     : null;
   let change = nativeTitleChange ? {
     type: "title_changed",
-    decision: "native_update_chapter",
     ...nativeTitleChange,
+    decision: `native_${nativeTitleChange.decision}`,
   } : null;
   const previousProgress = progressLedger.current(event.threadId);
   const candidate = buildHookCandidate(event, thread, previousProgress?.nativeTitle);

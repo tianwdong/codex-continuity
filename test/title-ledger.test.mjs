@@ -53,7 +53,7 @@ test("records a same-workstream native chapter update as reversible", () => {
   const ledger = new TitleLedger();
   ledger.observe({ id: "thread-1", name: "Codex Continuity｜发布准备" });
 
-  assert.deepEqual(ledger.recordNativeChapterChange({
+  assert.deepEqual(ledger.recordNativeTitleChange({
     id: "thread-1",
     name: "Codex Continuity｜原生标题刷新",
   }, "turn-2"), {
@@ -61,6 +61,7 @@ test("records a same-workstream native chapter update as reversible", () => {
     turnId: "turn-2",
     previousTitle: "Codex Continuity｜发布准备",
     title: "Codex Continuity｜原生标题刷新",
+    decision: "update_chapter",
   });
   assert.deepEqual(ledger.undoCandidate("thread-1"), {
     threadId: "thread-1",
@@ -73,21 +74,41 @@ test("records a same-workstream native chapter update as reversible", () => {
   }, "turn-2"), false);
 });
 
-test("does not claim an unrelated or locked native title change", () => {
-  const unrelated = new TitleLedger();
-  unrelated.observe({ id: "thread-1", name: "Codex Continuity｜发布准备" });
-  assert.equal(unrelated.recordNativeChapterChange({
+test("records a marked native workstream replacement as reversible", () => {
+  const ledger = new TitleLedger();
+  ledger.observe({ id: "thread-1", name: "评估 Slonaide 语音集成｜完整转写评估" });
+  assert.deepEqual(ledger.recordNativeTitleChange({
     id: "thread-1",
-    name: "其他工作｜新章节",
-  }, "turn-2"), null);
+    name: "知识库语音链路｜报告呈现与证据门收尾",
+  }, "turn-2"), {
+    threadId: "thread-1",
+    turnId: "turn-2",
+    previousTitle: "评估 Slonaide 语音集成｜完整转写评估",
+    title: "知识库语音链路｜报告呈现与证据门收尾",
+    decision: "replace_workstream",
+  });
+  assert.deepEqual(ledger.undoCandidate("thread-1"), {
+    threadId: "thread-1",
+    previousTitle: "评估 Slonaide 语音集成｜完整转写评估",
+    title: "知识库语音链路｜报告呈现与证据门收尾",
+  });
+});
 
+test("does not claim a locked or unstructured native title change", () => {
   const locked = new TitleLedger();
   const thread = { id: "thread-1", name: "Codex Continuity｜发布准备" };
   locked.observe(thread);
   locked.setLocked(thread, true);
-  assert.equal(locked.recordNativeChapterChange({
+  assert.equal(locked.recordNativeTitleChange({
     ...thread,
     name: "Codex Continuity｜原生标题刷新",
+  }, "turn-2"), null);
+
+  const unstructured = new TitleLedger();
+  unstructured.observe(thread);
+  assert.equal(unstructured.recordNativeTitleChange({
+    ...thread,
+    name: "缺少双层语义的标题",
   }, "turn-2"), null);
 });
 

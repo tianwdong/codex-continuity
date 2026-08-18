@@ -64,8 +64,11 @@ test("routes later durable goals and requests native title refresh without repea
   const context = output.hookSpecificOutput.additionalContext;
   assert.match(context, /codex-continuity:continuity-work-router/);
   assert.match(context, /set_thread_title/);
-  assert.match(context, /before the final reply/);
+  assert.match(context, /before final reply/);
   assert.match(context, /workstream｜chapter/);
+  assert.match(context, /explicit primary-goal shift/);
+  assert.match(context, /prior reliable chapter/);
+  assert.match(context, /old workstream misleads return/);
   assert.match(context, /one-shot side questions stay here/);
   assert.doesNotMatch(context, /continuity-context-match/);
   assert.doesNotMatch(JSON.stringify(output), /并行查一下测试和文档/);
@@ -285,6 +288,7 @@ test("plugin package includes the prompt Hook, matching Skill, work router, and 
   ]);
   assert.match(manifest.interface.longDescription, /For each later durable goal, quietly use the current Codex model/);
   assert.match(manifest.interface.longDescription, /use the current Codex host to refresh the native title/);
+  assert.match(manifest.interface.longDescription, /clearly changes its durable workstream/);
   assert.doesNotMatch(manifest.interface.longDescription, /only when the user explicitly asks/);
   assert.match(routerSkillPrompt, /policy:\s*[\s\S]*allow_implicit_invocation:\s*true/);
   assert.match(dispatchSkillPrompt, /policy:\s*[\s\S]*allow_implicit_invocation:\s*false/);
@@ -328,7 +332,9 @@ test("plugin package includes the prompt Hook, matching Skill, work router, and 
   assert.match(routerSkill, /explicitly says automatic task-title maintenance is unlocked/);
   assert.match(routerSkill, /call the native `set_thread_title` tool exactly once/);
   assert.match(routerSkill, /Before the final reply/);
-  assert.match(routerSkill, /Never replace the workstream automatically/);
+  assert.match(routerSkill, /Keep that workstream by default/);
+  assert.match(routerSkill, /old workstream would mislead the user's next return/);
+  assert.doesNotMatch(routerSkill, /Never replace the workstream automatically/);
   assert.match(routerSkill, /materially improves speed or quality/);
   assert.match(routerSkill, /one dependent chain, or shared mutable work/);
   assert.match(routerSkill, /fork contains completed history only/);

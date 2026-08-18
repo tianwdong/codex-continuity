@@ -495,6 +495,51 @@ test("records a current-host chapter rename and does not rewrite it through the 
   assert.equal(progressLedger.current("thread-1").progress, "当前 Codex 主机已经刷新任务标题");
 });
 
+test("records a current-host workstream replacement without a detached rewrite", async () => {
+  const thread = {
+    ...threadFixture(),
+    name: "知识库语音链路｜报告呈现与证据门收尾",
+  };
+  let writes = 0;
+  const appServer = {
+    async readThread() { return { thread }; },
+    async setThreadName() { writes += 1; },
+  };
+  const titleLedger = new TitleLedger();
+  titleLedger.observe({
+    ...thread,
+    name: "评估 Slonaide 语音集成｜完整转写评估",
+  });
+  const progressLedger = new ProgressLedger();
+
+  const result = await maintainContinuityForStop(stopPayload(), {
+    appServer,
+    titleLedger,
+    progressLedger,
+    nativeTitleTurnId: "turn-2",
+    decideTitles: async (items) => items.map((item) => ({
+      ...item,
+      titleDecision: "keep",
+      proposedTitle: item.nativeTitle,
+      titleConfidence: "high",
+      progressDecision: "update",
+      progressChapter: "报告呈现与证据门收尾",
+      progressSummary: "报告呈现与证据校验已经收敛",
+      progressConfidence: "high",
+    })),
+  });
+
+  assert.equal(result.status, "renamed");
+  assert.equal(result.change.decision, "native_replace_workstream");
+  assert.equal(writes, 0);
+  assert.deepEqual(titleLedger.undoCandidate("thread-1"), {
+    threadId: "thread-1",
+    previousTitle: "评估 Slonaide 语音集成｜完整转写评估",
+    title: "知识库语音链路｜报告呈现与证据门收尾",
+  });
+  assert.equal(progressLedger.current("thread-1").progress, "报告呈现与证据校验已经收敛");
+});
+
 test("a separate-task suggestion protects the current title without writing it", async () => {
   const thread = {
     ...threadFixture(),
