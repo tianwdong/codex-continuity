@@ -101,6 +101,23 @@ export class TitleLedger {
     );
   }
 
+  canCorrectCurrentTurn(thread, turnId) {
+    this.observe(thread);
+    const { threadId, title } = threadCoordinate(thread);
+    const record = this.state.threads[threadId];
+    const candidateTurnId = String(turnId || "");
+    return Boolean(
+      threadId
+      && title
+      && candidateTurnId
+      && record
+      && !record.locked
+      && record.evaluatedTurnId === candidateTurnId
+      && record.observedTitle === title
+      && record.appliedTitle === title,
+    );
+  }
+
   recordEvaluated(thread, turnId) {
     this.observe(thread);
     const { threadId, title } = threadCoordinate(thread);

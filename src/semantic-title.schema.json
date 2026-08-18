@@ -12,6 +12,7 @@
         "additionalProperties": false,
         "required": [
           "threadId",
+          "contextWorkstream",
           "decision",
           "workstream",
           "titleChapter",
@@ -25,6 +26,7 @@
         ],
         "properties": {
           "threadId": { "type": "string", "minLength": 1, "maxLength": 256 },
+          "contextWorkstream": { "type": "string", "minLength": 1, "maxLength": 64 },
           "decision": {
             "type": "string",
             "enum": ["keep", "update_chapter", "replace_workstream", "suggest_new_thread"]

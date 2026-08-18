@@ -1,7 +1,14 @@
-export async function applyTitleDecision(item, { appServer, titleLedger }) {
+export async function applyTitleDecision(item, {
+  appServer,
+  titleLedger,
+  allowCurrentTurnCorrection = false,
+}) {
   const fresh = await appServer.readThread(item.threadId);
   const thread = fresh?.thread;
-  if (!titleLedger.shouldEvaluate(thread, item.turnId)) return { item, change: null };
+  if (!titleLedger.shouldEvaluate(thread, item.turnId)
+    && !(allowCurrentTurnCorrection && titleLedger.canCorrectCurrentTurn(thread, item.turnId))) {
+    return { item, change: null };
+  }
   if (["keep", "suggest_new_thread"].includes(item.titleDecision)) {
     titleLedger.recordEvaluated(thread, item.turnId);
     return { item, change: null };

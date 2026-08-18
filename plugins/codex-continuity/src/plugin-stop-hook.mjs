@@ -231,13 +231,14 @@ export async function maintainContinuityForStop(input, {
     ...nativeTitleChange,
     decision: `native_${nativeTitleChange.decision}`,
   } : null;
+  const correctableNativeChapter = nativeTitleChange?.decision === "update_chapter";
   const previousProgress = progressLedger.current(event.threadId);
   const candidate = buildHookCandidate(event, thread, previousProgress?.nativeTitle);
   const hasPriorTurn = candidate.turnCount >= 2
     || Boolean(previousProgress?.sourceTurnId && previousProgress.sourceTurnId !== event.turnId);
   const titleEligible = candidate.titleMetadataAvailable
     && hasPriorTurn
-    && titleLedger.shouldEvaluate(thread, event.turnId);
+    && (correctableNativeChapter || titleLedger.shouldEvaluate(thread, event.turnId));
   const progressEligible = progressLedger.shouldEvaluate(event.threadId, event.turnId);
   if (!titleEligible && !progressEligible) {
     return change
@@ -287,16 +288,20 @@ export async function maintainContinuityForStop(input, {
     });
   }
 
-  if (titleEligible && decided.titleDecision && appServer) {
+  const shouldApplyTitleDecision = !correctableNativeChapter
+    || decided.titleDecision === "replace_workstream";
+  if (titleEligible && decided.titleDecision && shouldApplyTitleDecision && appServer) {
     try {
       const titleAppServer = {
         readThread: (threadId) => appServer.readThread(threadId, { includeTurns: false }),
         setThreadName: (...args) => appServer.setThreadName(...args),
       };
-      ({ change } = await applyTitleDecision(decided, {
+      const applied = await applyTitleDecision(decided, {
         appServer: titleAppServer,
         titleLedger,
-      }));
+        allowCurrentTurnCorrection: correctableNativeChapter,
+      });
+      if (applied.change) change = applied.change;
     } catch (_) {
       titleLedger.recordEvaluated(thread, event.turnId);
     }

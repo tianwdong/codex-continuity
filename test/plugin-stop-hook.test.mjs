@@ -495,6 +495,70 @@ test("records a current-host chapter rename and does not rewrite it through the 
   assert.equal(progressLedger.current("thread-1").progress, "当前 Codex 主机已经刷新任务标题");
 });
 
+test("corrects a stale workstream when the current host only updates the chapter", async () => {
+  let thread = {
+    ...threadFixture(),
+    name: "评估 Slonaide 语音集成｜自动纪要触发机制评估",
+  };
+  let writes = 0;
+  const appServer = {
+    async readThread() { return { thread }; },
+    async setThreadName(_threadId, name) {
+      writes += 1;
+      thread = { ...thread, name };
+    },
+  };
+  const titleLedger = new TitleLedger();
+  titleLedger.observe({
+    ...thread,
+    name: "评估 Slonaide 语音集成｜讯飞纪要未生成诊断",
+  });
+  const progressLedger = new ProgressLedger();
+  progressLedger.recordProgress({
+    threadId: "thread-1",
+    turnId: "turn-1",
+    nativeTitle: "评估 Slonaide 语音集成｜讯飞纪要未生成诊断",
+    chapter: "纪要触发能力核查",
+    progress: "已确认结束判定和自动同步均可实现",
+    confidence: "high",
+  });
+
+  const result = await maintainContinuityForStop(stopPayload({
+    assistantMessage: "自动纪要触发机制已落地并通过回归验证。",
+  }), {
+    appServer,
+    titleLedger,
+    progressLedger,
+    nativeTitleTurnId: "turn-2",
+    decideTitles: async (items) => {
+      assert.equal(items[0].previousChapter, "纪要触发能力核查");
+      assert.equal(items[0].previousProgress, "已确认结束判定和自动同步均可实现");
+      return items.map((item) => ({
+        ...item,
+        titleDecision: "replace_workstream",
+        proposedTitle: "知识库语音链路｜自动纪要触发机制落地",
+        proposedWorkstream: "知识库语音链路",
+        proposedTitleChapter: "自动纪要触发机制落地",
+        titleConfidence: "high",
+        progressDecision: "update",
+        progressChapter: "自动纪要触发机制",
+        progressSummary: "自动纪要触发机制已落地并通过回归验证",
+        progressConfidence: "high",
+      }));
+    },
+  });
+
+  assert.equal(result.status, "renamed");
+  assert.equal(result.change.decision, "replace_workstream");
+  assert.equal(thread.name, "知识库语音链路｜自动纪要触发机制落地");
+  assert.equal(writes, 1);
+  assert.deepEqual(titleLedger.undoCandidate("thread-1"), {
+    threadId: "thread-1",
+    previousTitle: "评估 Slonaide 语音集成｜自动纪要触发机制评估",
+    title: "知识库语音链路｜自动纪要触发机制落地",
+  });
+});
+
 test("records a current-host workstream replacement without a detached rewrite", async () => {
   const thread = {
     ...threadFixture(),

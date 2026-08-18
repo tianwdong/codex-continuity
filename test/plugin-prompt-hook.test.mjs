@@ -12,6 +12,7 @@ import {
   markNativeTitleTurn,
   parsePromptHookInput,
 } from "../src/plugin-prompt-hook.mjs";
+import { ProgressLedger, saveProgressLedger } from "../src/progress-ledger.mjs";
 import { threadStateCoordinate } from "../src/plugin-runtime.mjs";
 
 function promptPayload({ sessionId = "thread-1", turnId = "turn-1", prompt = "继续修复自动标题。" } = {}) {
@@ -67,11 +68,30 @@ test("routes later durable goals and requests native title refresh without repea
   assert.match(context, /before final reply/);
   assert.match(context, /workstream｜chapter/);
   assert.match(context, /explicit primary-goal shift/);
-  assert.match(context, /prior reliable chapter/);
+  assert.match(context, /prior context/);
   assert.match(context, /old workstream misleads return/);
   assert.match(context, /one-shot side questions stay here/);
   assert.doesNotMatch(context, /continuity-context-match/);
   assert.doesNotMatch(JSON.stringify(output), /并行查一下测试和文档/);
+  assert.ok(context.length <= 600);
+});
+
+test("gives later title maintenance the previous reliable context without copying the prompt", () => {
+  const output = buildPromptHookOutput(parsePromptHookInput(promptPayload({
+    turnId: "turn-3",
+    prompt: "这是不应进入 Hook 输出的当前请求。",
+  })), {
+    includeContextMatch: false,
+    previousProgress: {
+      chapter: "纪要触发能力核查",
+      progress: "已确认结束判定和自动同步均可实现，但无法触发讯飞原生纪要生成。",
+    },
+  });
+  const context = output.hookSpecificOutput.additionalContext;
+  assert.match(context, /纪要触发能力核查/);
+  assert.match(context, /结束判定和自动同步/);
+  assert.match(context, /untrusted/);
+  assert.doesNotMatch(context, /不应进入 Hook 输出/);
   assert.ok(context.length <= 600);
 });
 
@@ -218,6 +238,43 @@ test("the bundled runner checks context once and routes later prompts", async ()
     const nativeMarkers = await readdir(path.join(dataDirectory, "native-title-turn"));
     assert.equal(nativeMarkers.length, 1);
     assert.match(await readFile(path.join(dataDirectory, "native-title-turn", nativeMarkers[0]), "utf8"), /turn-2/);
+  } finally {
+    await rm(dataDirectory, { recursive: true, force: true });
+  }
+});
+
+test("the bundled runner injects stored prior progress into later title maintenance", async () => {
+  const dataDirectory = await mkdtemp(path.join(os.tmpdir(), "continuity-prior-progress-"));
+  const runner = fileURLToPath(new URL("../scripts/run-prompt-hook.sh", import.meta.url));
+  const environment = {
+    ...process.env,
+    PLUGIN_ROOT: fileURLToPath(new URL("../", import.meta.url)),
+    CODEX_CONTINUITY_DATA: dataDirectory,
+  };
+  const run = (payload) => JSON.parse(execFileSync("/bin/sh", [runner], {
+    input: `${JSON.stringify(payload)}\n`,
+    encoding: "utf8",
+    env: environment,
+  }));
+  try {
+    run(promptPayload());
+    const coordinate = threadStateCoordinate(dataDirectory, "thread-1");
+    const progressLedger = new ProgressLedger();
+    progressLedger.recordProgress({
+      threadId: "thread-1",
+      turnId: "turn-1",
+      nativeTitle: "评估 Slonaide 语音集成｜讯飞纪要未生成诊断",
+      chapter: "纪要触发能力核查",
+      progress: "已确认结束判定和自动同步均可实现",
+      confidence: "high",
+    });
+    await saveProgressLedger(coordinate.progressPath, progressLedger);
+
+    const context = run(promptPayload({ turnId: "turn-2" }))
+      .hookSpecificOutput.additionalContext;
+    assert.match(context, /纪要触发能力核查/);
+    assert.match(context, /结束判定和自动同步/);
+    assert.ok(context.length <= 600);
   } finally {
     await rm(dataDirectory, { recursive: true, force: true });
   }

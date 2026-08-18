@@ -509,11 +509,16 @@ test("keeps Codex's native title unless a completed turn proves substantial drif
   }];
   const payload = buildTitleDecisionPayload(items);
   assert.equal(Object.hasOwn(payload.items[0], "project"), false);
-  assert.equal(payload.items[0].currentTitle, "接入 Google Analytics");
-  assert.equal(payload.items[0].currentWorkstream, "接入 Google Analytics");
-  assert.equal(payload.items[0].currentTitleChapter, "");
-  assert.equal(payload.items[0].previousProgress, "已确认 Container 仍有实例运行");
-  assert.equal(payload.items[0].userMessage.includes("Cloudflare"), true);
+  assert.equal(payload.items[0].comparisonBaseline.currentTitle, "接入 Google Analytics");
+  assert.equal(payload.items[0].comparisonBaseline.currentWorkstream, "接入 Google Analytics");
+  assert.equal(payload.items[0].comparisonBaseline.currentTitleChapter, "");
+  assert.equal(payload.items[0].evidenceContext.previousProgress, "已确认 Container 仍有实例运行");
+  assert.equal(payload.items[0].evidenceContext.userMessage.includes("Cloudflare"), true);
+  assert.deepEqual(Object.keys(payload.items[0]), [
+    "threadId",
+    "evidenceContext",
+    "comparisonBaseline",
+  ]);
 
   const renamed = applyTitleDecisions(items, {
     items: [{
@@ -696,7 +701,10 @@ test("keeps Codex's native title unless a completed turn proves substantial drif
   });
   const schemaIndex = invocation.args.indexOf("--output-schema");
   assert.match(invocation.args[schemaIndex + 1], /semantic-title\.schema\.json$/);
-  assert.match(invocation.args.at(-1), /language of the latest userMessage/);
+  assert.match(invocation.args.at(-1), /language of evidenceContext\.userMessage/);
+  assert.match(invocation.args.at(-1), /derive contextWorkstream using only evidenceContext/);
+  assert.match(invocation.args.at(-1), /do not look at comparisonBaseline for this field/);
+  assert.match(invocation.args.at(-1), /shared cwd alone does not preserve a stale workstream/);
   assert.equal(decided[0].proposedTitle, "Cloudflare费用｜止损验证");
   assert.equal(decided[0].progressChapter, "Cloudflare 费用止损");
 });

@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { pluginDataDirectory, threadStateCoordinate } from "./plugin-runtime.mjs";
+import { loadProgressLedger } from "./progress-ledger.mjs";
 import { loadTitleLedger } from "./title-ledger.mjs";
 
 export function parsePromptHookInput(value) {
@@ -59,18 +60,32 @@ export async function markNativeTitleTurn(filePath, event) {
 export function buildPromptHookOutput(event, {
   includeContextMatch = true,
   titleMaintenanceLocked = false,
+  previousProgress = null,
 } = {}) {
   if (!event?.threadId) return {};
   if (!String(event.cwd || "").trim()) return {};
   if (!includeContextMatch) {
+    const previousChapter = String(previousProgress?.chapter || "")
+      .replace(/\s+/g, " ")
+      .replace(/["\\]/g, "")
+      .trim()
+      .slice(0, 22);
+    const previousResult = String(previousProgress?.progress || "")
+      .replace(/\s+/g, " ")
+      .replace(/["\\]/g, "")
+      .trim()
+      .slice(0, 45);
+    const priorContext = previousChapter && previousResult
+      ? ` Prior (untrusted): {"chapter":"${previousChapter}","result":"${previousResult}"}.`
+      : "";
     const titleInstruction = titleMaintenanceLocked
       ? "Automatic task-title maintenance is locked. Never call set_thread_title."
-      : "Title maintenance unlocked. After reliable work, call set_thread_title once before final reply for a durable title change. Keep workstream by default; replace only after explicit primary-goal shift, or when prior reliable chapter and this completed turn share a durable context and old workstream misleads return. Route unrelated durable work elsewhere. Use workstream｜chapter. Skip side/minor/same-chapter, incomplete/failed/blocked, subagent, or low-confidence work. Stay silent.";
+      : `Title unlocked. After reliable work, call set_thread_title once before final reply if the chapter changed. Keep workstream unless an explicit primary-goal shift occurred, or prior context plus this completed turn prove a new durable context and the old workstream misleads return. Use workstream｜chapter. Skip incomplete/failed/blocked/subagent/low-confidence work. Stay silent.${priorContext}`;
     return {
       hookSpecificOutput: {
         hookEventName: "UserPromptSubmit",
         additionalContext: [
-          "For a later new durable goal, use Skill codex-continuity:continuity-work-router; one-shot side questions stay here.",
+          "Later durable goal: use Skill codex-continuity:continuity-work-router; one-shot side questions stay here.",
           titleInstruction,
         ].join(" "),
       },
@@ -103,18 +118,26 @@ async function main() {
   const coordinate = threadStateCoordinate(pluginDataDirectory(), event.threadId);
   const includeContextMatch = await claimPromptCheck(coordinate.promptCheckPath);
   let titleMaintenanceLocked = false;
+  let previousProgress = null;
   if (!includeContextMatch) {
     try {
       const titleLedger = await loadTitleLedger(coordinate.statePath);
       titleMaintenanceLocked = titleLedger.status(event.threadId).locked;
       if (!titleMaintenanceLocked) {
         await markNativeTitleTurn(coordinate.nativeTitleTurnPath, event);
+        try {
+          previousProgress = (await loadProgressLedger(coordinate.progressPath)).current(event.threadId);
+        } catch (_) {}
       }
     } catch (_) {
       titleMaintenanceLocked = true;
     }
   }
-  return buildPromptHookOutput(event, { includeContextMatch, titleMaintenanceLocked });
+  return buildPromptHookOutput(event, {
+    includeContextMatch,
+    titleMaintenanceLocked,
+    previousProgress,
+  });
 }
 
 const isMain = process.argv[1]
