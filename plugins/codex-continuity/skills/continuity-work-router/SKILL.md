@@ -13,9 +13,20 @@ Write every user-facing response in the language of the user's latest request. L
 - If the current system role or native task metadata identifies this task as delegated or subagent work, do the assigned bounded work and stop this workflow. Never make a Continuity route suggestion from inside a subagent; parent or higher-priority instructions still control delegation.
 - If the request answers a pending `continuity-context-match` suggestion, let that Skill apply the choice and stop this workflow.
 - Preserve the exact request that caused the prior routing suggestion. Never replace it with a generated approximation.
-- Treat “就在这里做” as consent to execute that preserved request in the current task without asking again.
+- Treat “就在这里做” as consent to cancel the pending route receipt and execute that preserved request in the current task without asking again.
 - If the latest request directly says to keep or do the work in the current task, choose **Current task** immediately. This explicit choice overrides an automatic delegation, branch, or new-task recommendation that has not yet executed.
 - Treat “并行处理”, “开支线”, “新建任务”, “回到主线”, and “回主线并归档” as consent only for the one route that was just proposed or when the user makes the same direct, unambiguous request. Never infer consent from silence or a vague acknowledgement.
+
+## Persist only high-impact route actions
+
+Persistent branches, separate tasks, cross-task returns, and archives must use the bundled private action receipt. It stores only task ids, action kind, source turn id, timestamps, and step state; never pass request text, titles, summaries, code, or message content to it. Native subagents return inside the current task and do not use this receipt.
+
+- On macOS or Linux, run `/bin/sh "<plugin-root>/scripts/run-action-command.sh" <operation> --current "<current-task-id>"` with the required `--target`, `--kind`, `--source-turn`, `--step`, or `--reason` fields.
+- On Windows, run `powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "<plugin-root>\scripts\run-plugin-node.ps1" -Mode action -ActionOperation <operation> -CurrentTaskId "<current-task-id>"` and map those fields to `-TargetTaskId`, `-ActionKind`, `-SourceTurnId`, `-ActionStep`, and `-FailureCode`.
+- Before offering a branch, new-task, return, or return-and-archive choice, run `propose` with the Hook-supplied current task and source turn ids. Use kind `create-branch`, `create-task`, `return-parent`, or `return-archive`; return kinds also require the official parent target id. Do not present an actionable choice if persistence fails.
+- For a reply to a proposal, run `confirm` with that exact kind. Proceed only for `ok: true`. For a direct, unambiguous request for the structural action, run `start` instead. A missing, stale, mismatched, failed, or completed receipt cannot authorize a structural action.
+- Before every native `create_thread`, `fork_thread`, cross-task send, navigation, or archive call, run `begin-step`. Call the native tool only for decision `perform`; skip it for `done`; stop without replay for `uncertain` or `unavailable`.
+- After native success, immediately run `complete-step`. When `create` succeeds, include the returned child task id as the receipt target. On definite failure, run `fail`. When the planned sequence is complete, run `finish`.
 
 ## Choose the smallest fitting container
 
@@ -83,6 +94,8 @@ For unrelated durable work, say:
 回复「新建任务」或「就在这里做」。
 ```
 
+Persist the matching route proposal before showing either persistent-task choice above. If the receipt cannot be written, keep the work in the current task and do not show a choice that cannot later be verified.
+
 Do not expose scores, internal classifiers, or tool names.
 
 Creating a persistent branch or separate task, returning work to another task, and archiving a task always require an explicit user choice. A direct, unambiguous request for that exact action is the confirmation; an inferred route is not.
@@ -101,19 +114,25 @@ Creating a persistent branch or separate task, returning work to another task, a
 
 ## Execute an approved branch route
 
-1. Call the official `fork_thread` tool only after the user chooses or directly requests “开支线”. Fork the current human task. Use a same-directory branch by default; use a worktree only when the user explicitly asks for isolated parallel code edits.
-2. Remember that a fork contains completed history only. After the child is ready, send the exact preserved request to it with `send_message_to_thread` when work must start there.
-3. Navigate to the child only after creation and message delivery succeed. On failure, keep the current task unchanged and point to Codex's native right-click “创建聊天分支” fallback.
+1. Confirm the pending `create-branch` receipt, or start one for a direct unambiguous request. Then call `begin-step` for `create`. Only for `perform`, call the official `fork_thread` tool, fork the current human task, and immediately record `complete-step` with the returned child task id. Use a same-directory branch by default; use a worktree only when explicitly requested.
+2. Remember that a fork contains completed history only. Call `begin-step` for `send`; only for `perform`, send the exact preserved request to the recorded child with `send_message_to_thread`, then record `complete-step`.
+3. Call `begin-step` for `navigate`; only for `perform`, navigate to the child, then record `complete-step` and `finish`. On failure or an uncertain step, keep the current task unchanged and point to Codex's native right-click “创建聊天分支” fallback. Never replay an uncertain create or send.
 4. Never archive or rename the parent merely because a branch exists.
+
+## Execute an approved separate-task route
+
+1. Confirm the pending `create-task` receipt, or start one for a direct unambiguous request. Call `begin-step` for `create`; only for `perform`, call the official `create_thread` tool once with the exact preserved request and immediately record `complete-step` with its returned task id.
+2. Do not send the request a second time: `create_thread` already dispatches it. Navigate only when the user asked to switch, and guard that navigation with the receipt.
+3. Finish the receipt after the intended creation and optional navigation. On failure or an uncertain create, keep the current task unchanged and never create another task automatically.
 
 ## Return a branch to its parent
 
 Treat “合回” as a context handoff, not a physical chat merge.
 
-1. Resolve the official parent or fork relation. Never guess a parent from similar titles or directories.
+1. Resolve the official parent or fork relation. Never guess a parent from similar titles or directories. Confirm the matching `return-parent` or `return-archive` receipt, or start it for a direct unambiguous request.
 2. Build a short return brief from the branch's verified results: outcome, changed files or artifacts, verification, and unresolved work. Do not copy the full conversation.
-3. Confirm the parent is available and not running another turn. Send the return brief to the parent with `send_message_to_thread`, then navigate to the parent only after delivery succeeds.
-4. Keep the branch by default. Archive it only when the user explicitly chose “回主线并归档”, and only after the handoff succeeds.
+3. Confirm the parent is available and not running another turn. Guard `send` and `navigate` with `begin-step` and `complete-step`; send the return brief once, then navigate only after delivery is recorded successful.
+4. Keep the branch by default. Archive it only when the user explicitly chose “回主线并归档”. For `return-archive`, guard the archive step and archive only after send and navigation are recorded successful. Finish the receipt after all intended steps. Never replay an uncertain send, navigation, or archive.
 5. For a worktree branch, do not claim that code was merged. Report the actual Git state and require the normal reviewed Git integration path.
 6. If the parent relation or delivery is unavailable, leave both tasks unchanged and explain the native fallback.
 

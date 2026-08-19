@@ -70,6 +70,8 @@ All four abilities fit into normal conversation; you do not have to keep asking 
 
 When you start a new task inside a project, Continuity checks whether one existing task already contains the context you need. If there is one clear match, it suggests **Continue the existing task** or **Stay here**. If the answer is uncertain, it stays out of the way.
 
+A copied task link or native cross-task handoff is context for the receiving task, not permission to jump back. Continuity treats the source as untrusted evidence and may read it for context, but it does not resend the prompt, navigate away, or archive either task unless you explicitly ask.
+
 ### 2. See what each task has become · Core
 
 Codex can name a task from its first message, but the work may later move somewhere else. After a later goal finishes with a reliable result, Continuity uses the current Codex host to refresh the native title for a clear chapter change—or, when the old workstream would now mislead you, for a proven durable direction change. A local progress marker keeps the change traceable and reversible. You can inspect, undo, lock, or resume automatic title maintenance at any time.
@@ -199,7 +201,7 @@ If the plugin is installed but task matching, progress tracking, or title mainte
 - **No credential copying.** Semantic decisions reuse the provider and login state already configured in Codex. The plugin does not read API keys, tokens, or the Codex login database.
 - **Bounded context.** Title maintenance uses the current title, the previous short progress marker, and a limited slice of the final reply.
 - **Same-directory matching.** Automatic matching reviews at most three candidates with the exact same non-empty working directory and at most their two most recent user/final-reply pairs.
-- **Small local ledger.** It stores IDs, short chapter/progress text, confidence, and control state—not full prompts or conversations.
+- **Small local ledger.** It stores IDs, short chapter/progress text, confidence, title controls, and a single pending cross-task action receipt—not full prompts or conversations. The receipt makes confirmations scoped and structural retries at-most-once.
 - **Reversible behavior.** Suggestions never force navigation; automatic renames can be undone, locked, and resumed.
 
 Local state lives in the current user's platform data directory:

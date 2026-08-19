@@ -76,6 +76,8 @@ test("bilingual READMEs link to each other and document direct installation", as
   assert.match(englishReadme, /Current-task and low-confidence decisions stay completely silent/);
   assert.match(englishReadme, /explicit standing authorization/);
   assert.match(englishReadme, /Persistent branches, separate tasks, returns, and archives always require confirmation/);
+  assert.match(englishReadme, /A copied task link or native cross-task handoff is context for the receiving task, not permission to jump back/);
+  assert.match(englishReadme, /single pending cross-task action receipt/);
   assert.doesNotMatch(englishReadme, /The other two appear only when you ask/);
   assert.match(chineseReadme, /别再翻一排 Codex 任务/);
   assert.match(chineseReadme, /左侧「插件」→「已安装」→「Codex Continuity」/);
@@ -84,6 +86,8 @@ test("bilingual READMEs link to each other and document direct installation", as
   assert.match(chineseReadme, /拿不准时，Continuity 就留在当前任务，不打扰你/);
   assert.match(chineseReadme, /你已经授权自动委派时/);
   assert.match(chineseReadme, /开支线、新建任务、回传结果和归档旧任务前，Continuity 都会先征求你的确认/);
+  assert.match(chineseReadme, /复制任务深度链接，或由 Codex 从另一项任务转发内容，是给当前任务带入上下文，不是授权跳回旧任务/);
+  assert.match(chineseReadme, /最多一条跨任务动作回执/);
   assert.doesNotMatch(chineseReadme, /后两项只在你主动询问/);
   assert.doesNotMatch(chineseReadme, /静默选择最小承载方式|低置信判断|持久结构/);
 });

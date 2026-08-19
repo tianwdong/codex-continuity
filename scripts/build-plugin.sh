@@ -53,6 +53,7 @@ copy_file README.zh-CN.md
 copy_file SECURITY.md
 copy_file hooks/hooks.json
 copy_file scripts/run-prompt-hook.sh
+copy_file scripts/run-action-command.sh
 copy_file scripts/run-stop-hook.sh
 copy_file scripts/run-title-command.sh
 copy_file scripts/run-plugin-node.ps1
@@ -75,6 +76,8 @@ runtime_files=(
   plugin-title-decision.mjs
   progress-ledger.mjs
   semantic-title.schema.json
+  task-action-command.mjs
+  task-action-ledger.mjs
   title-ledger.mjs
   title-maintainer.mjs
 )
@@ -83,6 +86,7 @@ for runtime_file in "${runtime_files[@]}"; do
 done
 
 chmod +x \
+  "$bundle_root/scripts/run-action-command.sh" \
   "$bundle_root/scripts/run-prompt-hook.sh" \
   "$bundle_root/scripts/run-stop-hook.sh" \
   "$bundle_root/scripts/run-title-command.sh"

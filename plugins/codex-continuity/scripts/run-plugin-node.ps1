@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
   [Parameter(Mandatory = $true)]
-  [ValidateSet("prompt", "stop", "title", "dispatch")]
+  [ValidateSet("prompt", "stop", "title", "dispatch", "action")]
   [string]$Mode,
 
   [ValidateSet("status", "undo", "lock", "resume")]
@@ -11,7 +11,21 @@ param(
   [string]$RecommendationMode,
 
   [ValidateSet("focused", "exploration", "demanding")]
-  [string]$TaskClass
+  [string]$TaskClass,
+
+  [ValidateSet("propose", "confirm", "start", "cancel", "begin-step", "complete-step", "skip-step", "fail", "finish", "status")]
+  [string]$ActionOperation,
+
+  [ValidateSet("continue-task", "create-branch", "create-task", "return-parent", "return-archive")]
+  [string]$ActionKind,
+
+  [ValidateSet("create", "send", "navigate", "archive")]
+  [string]$ActionStep,
+
+  [string]$CurrentTaskId,
+  [string]$TargetTaskId,
+  [string]$SourceTurnId,
+  [string]$FailureCode
 )
 
 $ErrorActionPreference = "Stop"
@@ -109,6 +123,7 @@ $entryPoints = @{
   stop = "src\plugin-stop-hook.mjs"
   title = "src\plugin-title-command.mjs"
   dispatch = "skills\continuity-subagent-dispatch\scripts\select-profile.mjs"
+  action = "src\task-action-command.mjs"
 }
 
 if (-not $env:CODEX_CONTINUITY_CODEX) {
@@ -130,7 +145,7 @@ if (-not $nodeRuntime) {
   if ($Mode -eq "stop") {
     Add-Content -LiteralPath (Join-Path $dataRoot "continuity.log") -Value "$([DateTime]::UtcNow.ToString('o')) runtime_unavailable"
   }
-  if ($Mode -eq "title") {
+  if ($Mode -in @("title", "action")) {
     Write-Output '{"ok":false,"error":"runtime_unavailable"}'
     exit 1
   }
@@ -154,6 +169,17 @@ if ($Mode -eq "stop") {
     exit 1
   }
   $entryArguments = @("--mode", $RecommendationMode, "--task-class", $TaskClass)
+} elseif ($Mode -eq "action") {
+  if (-not $ActionOperation -or -not $CurrentTaskId) {
+    Write-Output '{"ok":false,"error":"action_parameters_unavailable"}'
+    exit 1
+  }
+  $entryArguments = @($ActionOperation, "--current", $CurrentTaskId)
+  if ($TargetTaskId) { $entryArguments += @("--target", $TargetTaskId) }
+  if ($ActionKind) { $entryArguments += @("--kind", $ActionKind) }
+  if ($ActionStep) { $entryArguments += @("--step", $ActionStep) }
+  if ($SourceTurnId) { $entryArguments += @("--source-turn", $SourceTurnId) }
+  if ($FailureCode) { $entryArguments += @("--reason", $FailureCode) }
 }
 & $nodeRuntime $entryPoint @EntryArguments
 exit $LASTEXITCODE
