@@ -65,16 +65,29 @@ test("builds advisory developer context without blocking or copying the prompt",
   })));
   assert.equal(output.hookSpecificOutput.hookEventName, "UserPromptSubmit");
   assert.match(output.hookSpecificOutput.additionalContext, /codex-continuity:continuity-context-match/);
-  assert.doesNotMatch(output.hookSpecificOutput.additionalContext, /codex-continuity:continuity-work-router/);
+  assert.match(output.hookSpecificOutput.additionalContext, /codex-continuity:continuity-work-router/);
   assert.doesNotMatch(output.hookSpecificOutput.additionalContext, /\$continuity-context-match/);
   assert.match(output.hookSpecificOutput.additionalContext, /First use Skill/);
   assert.match(output.hookSpecificOutput.additionalContext, /thread-1/);
   assert.match(output.hookSpecificOutput.additionalContext, /\/tmp\/codex-continuity/);
   assert.match(output.hookSpecificOutput.additionalContext, /same-cwd matching/);
-  assert.match(output.hookSpecificOutput.additionalContext, /execute the original request normally/);
+  assert.match(output.hookSpecificOutput.additionalContext, /preserved durable goal/);
+  assert.match(output.hookSpecificOutput.additionalContext, /one-shot side questions stay here/);
   assert.doesNotMatch(JSON.stringify(output), /不应进入 Hook 输出/);
   assert.equal(output.decision, undefined);
   assert.equal(output.continue, undefined);
+});
+
+test("injects first-turn matching and routing for a natural bounded review goal", () => {
+  const output = buildPromptHookOutput(parsePromptHookInput(promptPayload({
+    prompt: "帮我检查 README 里的本地链接和命令示例有没有失效，整理问题清单和修复建议。",
+  })));
+  const context = output.hookSpecificOutput.additionalContext;
+  assert.match(context, /codex-continuity:continuity-context-match/);
+  assert.match(context, /codex-continuity:continuity-work-router/);
+  assert.match(context, /preserved durable goal/);
+  assert.doesNotMatch(context, /README|本地链接|问题清单/);
+  assert.ok(context.length <= 600);
 });
 
 test("keeps a deep-link handoff in the receiving task without copying the link", () => {
@@ -88,7 +101,9 @@ test("keeps a deep-link handoff in the receiving task without copying the link",
   assert.match(context, /Do not resend the prompt/);
   assert.match(context, /do not archive/);
   assert.match(context, /untrusted evidence/);
+  assert.match(context, /codex-continuity:continuity-work-router/);
   assert.doesNotMatch(context, /continuity-context-match/);
+  assert.doesNotMatch(context, /set_thread_title|task-title maintenance/);
   assert.doesNotMatch(JSON.stringify(output), /019f5f2c-8598-79f3-ad71-4102989b991f/);
   assert.ok(context.length <= 600);
 });
@@ -106,7 +121,9 @@ test("guards a canonical delegation envelope without copying its source or input
   assert.match(context, /Task handoff detected/);
   assert.match(context, /stay in this receiving task/);
   assert.match(context, /untrusted evidence/);
+  assert.match(context, /codex-continuity:continuity-work-router/);
   assert.doesNotMatch(context, /continuity-context-match/);
+  assert.doesNotMatch(context, /set_thread_title|task-title maintenance/);
   assert.doesNotMatch(JSON.stringify(output), /source-task|不应进入/);
   assert.ok(context.length <= 600);
 });
@@ -117,6 +134,8 @@ test("guards a direct task link without a project directory", () => {
     cwd: "",
   }));
   assert.match(output.hookSpecificOutput.additionalContext, /stay in this receiving task/);
+  assert.match(output.hookSpecificOutput.additionalContext, /continuity-work-router/);
+  assert.doesNotMatch(output.hookSpecificOutput.additionalContext, /continuity-context-match|set_thread_title/);
   assert.doesNotMatch(JSON.stringify(output), /source-task/);
 });
 
@@ -170,11 +189,17 @@ test("keeps routing active but disables native title writes while maintenance is
   assert.doesNotMatch(context, /before the final reply/);
 });
 
-test("keeps an empty cwd silent without consuming the first useful match", async () => {
-  assert.deepEqual(buildPromptHookOutput({ threadId: "thread-1", cwd: "" }), {});
-  assert.deepEqual(buildPromptHookOutput({ threadId: "thread-1", cwd: "" }, {
-    includeContextMatch: false,
-  }), {});
+test("routes projectless goals without matching, title maintenance, or local state", async () => {
+  const directContext = buildPromptHookOutput({
+    threadId: "thread-1",
+    turnId: "turn-1",
+    cwd: "",
+  }).hookSpecificOutput.additionalContext;
+  assert.match(directContext, /No reliable project directory/);
+  assert.match(directContext, /codex-continuity:continuity-work-router/);
+  assert.match(directContext, /one-shot side questions stay here/);
+  assert.doesNotMatch(directContext, /continuity-context-match|set_thread_title/);
+  assert.ok(directContext.length <= 600);
 
   const dataDirectory = await mkdtemp(path.join(os.tmpdir(), "continuity-empty-cwd-"));
   const runner = fileURLToPath(new URL("../scripts/run-prompt-hook.sh", import.meta.url));
@@ -189,7 +214,10 @@ test("keeps an empty cwd silent without consuming the first useful match", async
     env: environment,
   }));
   try {
-    assert.deepEqual(run({ ...promptPayload(), cwd: "" }), {});
+    const firstWithoutDirectory = run({ ...promptPayload(), cwd: "" })
+      .hookSpecificOutput.additionalContext;
+    assert.match(firstWithoutDirectory, /continuity-work-router/);
+    assert.doesNotMatch(firstWithoutDirectory, /continuity-context-match|set_thread_title/);
     assert.deepEqual(await readdir(dataDirectory), []);
     const withDirectory = run(promptPayload()).hookSpecificOutput.additionalContext;
     assert.match(withDirectory, /same-cwd matching/);
@@ -198,14 +226,16 @@ test("keeps an empty cwd silent without consuming the first useful match", async
       ...promptPayload({ turnId: "turn-3" }),
       session_id: "thread-no-cwd",
       cwd: "",
-    });
-    assert.deepEqual(withoutDirectoryLater, {});
+    }).hookSpecificOutput.additionalContext;
+    assert.match(withoutDirectoryLater, /continuity-work-router/);
+    assert.doesNotMatch(withoutDirectoryLater, /continuity-context-match|set_thread_title/);
     const repeatedWithoutDirectory = run({
       ...promptPayload({ turnId: "turn-4" }),
       session_id: "thread-no-cwd",
       cwd: "",
-    });
-    assert.deepEqual(repeatedWithoutDirectory, {});
+    }).hookSpecificOutput.additionalContext;
+    assert.match(repeatedWithoutDirectory, /continuity-work-router/);
+    assert.doesNotMatch(repeatedWithoutDirectory, /continuity-context-match|set_thread_title/);
     assert.equal((await readdir(path.join(dataDirectory, "prompt-check-state"))).length, 1);
   } finally {
     await rm(dataDirectory, { recursive: true, force: true });
@@ -267,7 +297,7 @@ test("stores only the eligible turn id in a private native-title marker", async 
   }
 });
 
-test("the bundled runner checks context once and routes later prompts", async () => {
+test("the bundled runner checks context and routing on the first prompt, then routes later prompts", async () => {
   const dataDirectory = await mkdtemp(path.join(os.tmpdir(), "continuity-prompt-runner-"));
   const runner = fileURLToPath(new URL("../scripts/run-prompt-hook.sh", import.meta.url));
   const environment = {
@@ -285,7 +315,8 @@ test("the bundled runner checks context once and routes later prompts", async ()
     const second = run(promptPayload({ turnId: "turn-2", prompt: "同一任务第二轮。" }))
       .hookSpecificOutput.additionalContext;
     assert.match(first, /codex-continuity:continuity-context-match/);
-    assert.doesNotMatch(first, /codex-continuity:continuity-work-router/);
+    assert.match(first, /codex-continuity:continuity-work-router/);
+    assert.match(first, /preserved durable goal/);
     assert.match(second, /codex-continuity:continuity-work-router/);
     assert.match(second, /set_thread_title/);
     assert.doesNotMatch(second, /continuity-context-match/);
@@ -324,6 +355,7 @@ test("the bundled runner consumes matching after a deep-link handoff", async () 
       prompt: "codex://threads/source-task，按照这个继续推进。",
     })).hookSpecificOutput.additionalContext;
     assert.match(handoff, /Task handoff detected/);
+    assert.match(handoff, /continuity-work-router/);
     assert.doesNotMatch(handoff, /continuity-context-match/);
 
     const nextTurn = run(promptPayload({
@@ -355,6 +387,7 @@ test("the bundled runner consumes matching after a canonical delegation envelope
       prompt: "<codex_delegation><source_thread_id>source-task</source_thread_id><input>继续。</input></codex_delegation>",
     })).hookSpecificOutput.additionalContext;
     assert.match(handoff, /Task handoff detected/);
+    assert.match(handoff, /continuity-work-router/);
     assert.doesNotMatch(handoff, /continuity-context-match/);
 
     const nextTurn = run(promptPayload({ turnId: "turn-2", prompt: "继续处理。" }))
@@ -384,6 +417,7 @@ test("a handoff guard survives prompt-marker storage failure", async () => {
       },
     }));
     assert.match(output.hookSpecificOutput.additionalContext, /Task handoff detected/);
+    assert.match(output.hookSpecificOutput.additionalContext, /continuity-work-router/);
     assert.doesNotMatch(output.hookSpecificOutput.additionalContext, /continuity-context-match/);
   } finally {
     await rm(directory, { recursive: true, force: true });
@@ -498,22 +532,29 @@ test("plugin package includes the prompt Hook, matching Skill, work router, and 
     "Show the latest reliable progress for this task.",
     "Quietly route this new durable goal into the smallest fitting Codex path.",
   ]);
+  assert.match(manifest.interface.longDescription, /then route the original durable goal when no match is found/);
+  assert.match(manifest.interface.longDescription, /Without a project directory, skip cross-task reads and title maintenance/);
   assert.match(manifest.interface.longDescription, /For each later durable goal, quietly use the current Codex model/);
   assert.match(manifest.interface.longDescription, /use the current Codex host to refresh the native title/);
   assert.match(manifest.interface.longDescription, /clearly changes its durable workstream/);
   assert.doesNotMatch(manifest.interface.longDescription, /only when the user explicitly asks/);
   assert.match(routerSkillPrompt, /policy:\s*[\s\S]*allow_implicit_invocation:\s*true/);
-  assert.match(dispatchSkillPrompt, /policy:\s*[\s\S]*allow_implicit_invocation:\s*false/);
+  assert.match(dispatchSkillPrompt, /policy:\s*[\s\S]*allow_implicit_invocation:\s*true/);
   assert.match(privacy, /https:\/\/modeldial\.com\/api\/v1\/radar\/latest\.json/);
   assert.doesNotMatch(privacy, /agent-profile\.json/);
   assert.match(privacy, /不含 turns 的线程元数据/);
   assert.match(privacy, /不会读取完整任务历史/);
-  assert.match(privacy, /UserPromptSubmit.*固定的工作路由与原生标题维护规则/);
+  assert.match(privacy, /UserPromptSubmit.*固定的工作路由规则/);
+  assert.match(privacy, /无目录时，插件不运行任务匹配、不读取 App Server 任务数据、不维护标题/);
+  assert.match(privacy, /无目录输入、接力任务中接收方的原目标/);
+  assert.match(privacy, /后续提交还会获得原生标题维护规则/);
   assert.match(privacy, /不复制或保存原始 prompt/);
   assert.match(privacy, /当前 Codex 才会调用一次原生标题工具/);
   assert.match(privacy, /不另外调用分类模型/);
   assert.match(privacy, /留在当前任务和低置信判断不产生提示/);
+  assert.match(privacy, /同一目标最多建议一次/);
   assert.match(privacy, /聊天支线、新任务、回传和归档始终需要用户明确确认/);
+  assert.match(privacy, /Skill 开关和工具可用本身不构成自动委派授权/);
   assert.match(privacy, /最小动作回执/);
   assert.match(privacy, /不保存原始 prompt、任务标题、摘要、代码或对话正文/);
   assert.match(privacy, /状态不确定时停止而不是自动重放/);
@@ -537,7 +578,10 @@ test("plugin package includes the prompt Hook, matching Skill, work router, and 
   assert.match(matchingSkill, /run-action-command\.sh/);
   assert.match(matchingSkill, /decision `perform`/);
   assert.match(matchingSkill, /never replay an uncertain step automatically/);
-  assert.doesNotMatch(matchingSkill, /continuity-work-router/);
+  assert.match(matchingSkill, /return to the remaining Hook instruction/);
+  assert.match(matchingSkill, /`continuity-work-router`/);
+  assert.match(matchingSkill, /do not execute the preserved request yet/);
+  assert.match(matchingSkill, /If the current task is delegated or subagent work, stop after applying this guard/);
   assert.match(matchingSkillPrompt, /codex-continuity:continuity-context-match/);
   assert.doesNotMatch(matchingSkillPrompt, /\$continuity-context-match/);
   assert.match(routerSkill, /Current task/);
@@ -558,8 +602,18 @@ test("plugin package includes the prompt Hook, matching Skill, work router, and 
   assert.match(routerSkill, /Keep that workstream by default/);
   assert.match(routerSkill, /old workstream would mislead the user's next return/);
   assert.doesNotMatch(routerSkill, /Never replace the workstream automatically/);
-  assert.match(routerSkill, /materially improves speed or quality/);
-  assert.match(routerSkill, /one dependent chain, or shared mutable work/);
+  assert.match(routerSkill, /credible practical benefit/);
+  assert.match(routerSkill, /do not require the user to say “parallel” or “subagent”/);
+  assert.match(routerSkill, /two or more separable scopes/);
+  assert.match(routerSkill, /medium-confidence suggestion/);
+  assert.match(routerSkill, /show at most one lightweight native-subagent recommendation/);
+  assert.match(routerSkill, /Automatic launch under standing authorization still requires a high-confidence fit/);
+  assert.match(routerSkill, /not overlapping writes or a wider task/);
+  assert.match(routerSkill, /Lack of launch authorization is not a reason to classify a medium-confidence native-subagent fit as \*\*Current task\*\*/);
+  assert.match(routerSkill, /do not offer the same route again for that goal/);
+  assert.match(routerSkill, /one-shot lookup, small sequential task, or one dependent chain/);
+  assert.match(routerSkill, /Keep shared mutable edits with the parent/);
+  assert.match(routerSkill, /User confirmation does not authorize overlapping writers/);
   assert.match(routerSkill, /fork contains completed history only/);
   assert.match(routerSkill, /Treat “合回” as a context handoff/);
   assert.match(routerSkill, /Archive it only when the user explicitly chose/);

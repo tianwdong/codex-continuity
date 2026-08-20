@@ -4,6 +4,9 @@ set -euo pipefail
 
 project_root="$(cd "$(dirname "$0")/.." && pwd)"
 codex_home="${CODEX_HOME:-$HOME/.codex}"
+marketplace_name="codex-continuity-dev"
+marketplace_root="$project_root/scripts/dev-marketplace"
+plugin_selector="codex-continuity@$marketplace_name"
 
 if [ "$#" -gt 1 ]; then
   echo "用法：npm run install:plugin:dev [-- --wait]" >&2
@@ -78,16 +81,61 @@ if [ -z "$codex_command" ]; then
   exit 1
 fi
 
+node_command="$(command -v node || true)"
+if [ -z "$node_command" ]; then
+  echo "找不到 Node.js，无法安装和核验插件。" >&2
+  exit 1
+fi
+
+ensure_dev_marketplace() {
+  local marketplace_list_json
+  local configured_root
+  local expected_root
+
+  expected_root="$(cd "$marketplace_root" && pwd -P)"
+  marketplace_list_json="$("$codex_command" plugin marketplace list --json)"
+  configured_root="$(printf '%s' "$marketplace_list_json" | "$node_command" -e '
+    let value = "";
+    try {
+      const payload = JSON.parse(require("node:fs").readFileSync(0, "utf8"));
+      const item = (payload.marketplaces || []).find((entry) => entry.name === process.argv[1]);
+      if (item) value = String(item.root || "");
+    } catch {}
+    process.stdout.write(value);
+  ' "$marketplace_name")"
+
+  if [ -n "$configured_root" ]; then
+    if [ -d "$configured_root" ]; then
+      configured_root="$(cd "$configured_root" && pwd -P)"
+    fi
+    if [ "$configured_root" != "$expected_root" ]; then
+      echo "Marketplace $marketplace_name 已指向其他目录：$configured_root" >&2
+      echo "请先运行 codex plugin marketplace remove $marketplace_name，再重试。" >&2
+      exit 1
+    fi
+    return
+  fi
+
+  "$codex_command" plugin marketplace add "$marketplace_root"
+}
+
+stage_dev_marketplace() {
+  local plugin_source="$project_root/dist/plugin/codex-continuity"
+  local plugin_target="$marketplace_root/plugins/codex-continuity"
+
+  mkdir -p "$(dirname "$plugin_target")"
+  if [ -e "$plugin_target" ]; then
+    /bin/rm -rf "$plugin_target"
+  fi
+  /usr/bin/ditto "$plugin_source" "$plugin_target"
+}
+
 cd "$project_root"
 npm run build:plugin
 ensure_main_app_stopped
-"$codex_command" plugin add codex-continuity@personal
-
-node_command="$(command -v node || true)"
-if [ -z "$node_command" ]; then
-  echo "找不到 Node.js，无法核验插件安装。" >&2
-  exit 1
-fi
+stage_dev_marketplace
+ensure_dev_marketplace
+"$codex_command" plugin add "$plugin_selector"
 
 manifest_field() {
   "$node_command" -e '
@@ -124,27 +172,27 @@ verify_installed_plugin() {
 
   plugin_name="$(manifest_field "$source_manifest" name)"
   plugin_version="$(manifest_field "$source_manifest" version)"
-  plugin_list_json="$("$codex_command" plugin list --marketplace personal --json)"
+  plugin_list_json="$("$codex_command" plugin list --marketplace "$marketplace_name" --json)"
   listed_version="$(printf '%s' "$plugin_list_json" | "$node_command" -e '
     let value = "";
     try {
       const payload = JSON.parse(require("node:fs").readFileSync(0, "utf8"));
-      const item = (payload.installed || []).find((entry) => entry.pluginId === "codex-continuity@personal");
+      const item = (payload.installed || []).find((entry) => entry.pluginId === process.argv[1]);
       if (item) value = String(item.version || "");
     } catch {}
     if (!value) process.exit(1);
     process.stdout.write(value);
-  ')"
+  ' "$plugin_selector")"
   listed_enabled="$(printf '%s' "$plugin_list_json" | "$node_command" -e '
     let value = "";
     try {
       const payload = JSON.parse(require("node:fs").readFileSync(0, "utf8"));
-      const item = (payload.installed || []).find((entry) => entry.pluginId === "codex-continuity@personal");
+      const item = (payload.installed || []).find((entry) => entry.pluginId === process.argv[1]);
       if (item) value = String(item.enabled);
     } catch {}
     if (!value) process.exit(1);
     process.stdout.write(value);
-  ')"
+  ' "$plugin_selector")"
   if [ "$listed_version" != "$plugin_version" ]; then
     echo "安装后版本不一致：源码 $plugin_version，codex plugin list $listed_version。" >&2
     exit 1
@@ -154,7 +202,7 @@ verify_installed_plugin() {
     exit 1
   fi
 
-  cache_root="$codex_home/plugins/cache/personal/$plugin_name/$plugin_version"
+  cache_root="$codex_home/plugins/cache/$marketplace_name/$plugin_name/$plugin_version"
   cache_manifest="$cache_root/.codex-plugin/plugin.json"
   if [ ! -f "$cache_manifest" ]; then
     echo "找不到安装缓存 manifest：$cache_manifest" >&2

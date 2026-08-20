@@ -876,10 +876,15 @@ test("plugin package uses the default bundled Hook location", async () => {
   assert.doesNotMatch(installScript, /\/Applications\/ChatGPT\.app\/Contents\/Frameworks/);
   assert.match(installScript, /while main_app_running/);
   assert.equal(installScript.match(/ensure_main_app_stopped/g)?.length, 3);
-  assert.match(installScript, /"\$codex_command" plugin add codex-continuity@personal/);
-  assert.match(installScript, /plugin list --marketplace personal --json/);
+  assert.match(installScript, /marketplace_name="codex-continuity-dev"/);
+  assert.match(installScript, /stage_dev_marketplace\(\)/);
+  assert.match(installScript, /ditto "\$plugin_source" "\$plugin_target"/);
+  assert.match(installScript, /plugin marketplace add "\$marketplace_root"/);
+  assert.match(installScript, /"\$codex_command" plugin add "\$plugin_selector"/);
+  assert.match(installScript, /plugin list --marketplace "\$marketplace_name" --json/);
   assert.match(installScript, /CODEX_HOME/);
-  assert.match(installScript, /plugins\/cache\/personal/);
+  assert.match(installScript, /plugins\/cache\/\$marketplace_name/);
+  assert.doesNotMatch(installScript, /codex-continuity@personal|marketplace personal|cache\/personal/);
   assert.match(installScript, /shasum -a 256/);
   assert.match(installScript, /cache manifest/);
 });

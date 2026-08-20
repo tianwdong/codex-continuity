@@ -5,7 +5,7 @@ description: Quietly classify each new durable Codex goal as work for the curren
 
 # Codex Continuity Work Router
 
-Classify every new durable goal, but keep routing invisible unless the work clearly benefits from another container. Never turn every request into a menu.
+Classify every new durable goal, but keep routing invisible unless another container has a credible independent benefit. Never turn every request into a menu.
 Write every user-facing response in the language of the user's latest request. Localize choice labels and example wording; preserve commands, native task titles, model names, links, and quoted evidence as-is.
 
 ## Resolve a pending choice first
@@ -35,11 +35,19 @@ One-shot lookups, calculations, translations, and similar side questions are out
 Use these routes in order:
 
 1. **Current task:** keep work here when it shares the current objective or context and can remain one coherent result. This is the default. Execute silently.
-2. **Native subagent:** use only for bounded, independent work whose result can return to this task now, does not need a durable user-visible identity or later steering, and materially improves speed or quality by running separately. Prefer it for read-heavy research, review, or clearly separated implementation ownership. Keep a small task, one dependent chain, or shared mutable work in the current task; parallelism being technically possible is not enough.
+2. **Native subagent:** use for bounded work whose result can return to this task now and does not need a durable user-visible identity or later steering. Recommend it when one responsibility can return independently and separate execution has a credible practical benefit. Because an unlaunched recommendation is reversible, any one of these shapes is enough for a medium-confidence suggestion: two or more separable scopes; implementation plus independent verification; cross-platform or documentation／code／test comparison; a read-heavy scan across several files or sources; test or log analysis; or clearly non-overlapping implementation ownership. Infer this from the task shape; do not require the user to say “parallel” or “subagent”. Keep a one-shot lookup, small sequential task, or one dependent chain in the current task. Shared mutable writes do not justify parallel writers: keep those writes with the parent and delegate only a useful read-only scan, review, or verification. If no safe bounded responsibility remains, keep the whole goal here.
 3. **Persistent chat branch:** use when the work needs current history but should retain an independent context that the user may revisit, steer, or continue later. Prefer it for a long-lived alternative direction or an explicitly isolated worktree, not for a disposable subtask.
 4. **Separate new task:** use only for unrelated durable work that is likely to need future steering, multiple turns, reusable artifacts, or persistent state. Never create it automatically.
 
 When confidence is low, keep the work in the current task and say nothing about routing.
+
+Use separate thresholds for recommendation and execution:
+
+- Medium confidence is enough to show at most one lightweight native-subagent recommendation for the preserved durable goal, because execution still waits for the user's choice.
+- Automatic launch under standing authorization still requires a high-confidence fit and a safely isolated responsibility.
+- The user's “并行处理” choice authorizes that bounded route, not overlapping writes or a wider task. If safe ownership cannot be isolated, narrow the subagent to read-only review or verification and keep shared edits with the parent.
+
+Classify the fitting container before checking launch authorization. Lack of launch authorization is not a reason to classify a medium-confidence native-subagent fit as **Current task**. After the user chooses “就在这里做”, execute the preserved goal here and do not offer the same route again for that goal.
 
 Do not announce a **Current task** classification, confidence score, internal rationale, or the fact that this Skill ran. Continue with the user's request.
 
@@ -68,10 +76,12 @@ After choosing **Native subagent**, apply `$codex-continuity:continuity-subagent
 - Never duplicate its ranking logic, switch the current main agent, or expose extra model choices from this Skill.
 - Selecting the subagent route authorizes the dispatch Skill to prepare one recommendation. It does not by itself authorize launching a subagent.
 - Treat a direct request for delegation, an explicit pending choice of “并行处理”, an applicable higher-priority instruction, or an explicit standing instruction to auto-delegate suitable work as authorization to launch. Do not infer standing authorization from prior successful delegations, silence, tool availability, or installation of this plugin.
-- With standing authorization, launch the bounded subagent and briefly state what was delegated and which permitted worker configuration was used. Do not ask for another confirmation.
+- With standing authorization, launch only a high-confidence fit with a safely isolated responsibility, then briefly state what was delegated and which permitted worker configuration was used. Do not ask for another confirmation.
 - Without launch authorization, present one lightweight recommendation and wait for “并行处理” or “就在这里做”.
 
 ## Offer one decision, not four options
+
+Show at most one route recommendation for each preserved durable goal. A rejection applies to that goal and must not be asked again.
 
 For a bounded parallel subtask without launch authorization, use the dispatch Skill's lightweight recommendation when available. Otherwise say:
 
@@ -104,7 +114,7 @@ Creating a persistent branch or separate task, returning work to another task, a
 
 1. Use the native collaboration or subagent tools, not `create_thread` or `fork_thread`.
 2. Obey the current system instructions and applicable `AGENTS.md` or Skill rules. A direct user request for a subagent, an applicable higher-priority instruction, an explicit standing auto-delegation instruction, or the explicit “并行处理” choice can authorize delegation; this Skill alone cannot.
-3. Give each subagent one bounded responsibility. Warn it about shared workspace edits when applicable.
+3. Give each subagent one bounded responsibility. User confirmation does not authorize overlapping writers. Keep shared mutable edits with the parent and narrow the subagent to independent implementation, read-only review, testing, or verification.
 4. Use one subagent by default. Add another only for an independent, non-overlapping workstream that materially improves speed or quality; obey native concurrency and ownership rules.
 5. Wait for the result, verify it proportionately, and synthesize it into the current parent task.
 6. Never rename, archive, navigate to, match against, or present a subagent thread as a user task. The parent owns the outcome.

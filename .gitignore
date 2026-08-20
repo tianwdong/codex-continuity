@@ -2,6 +2,7 @@
 dist/
 node_modules/
 /output/
+/scripts/dev-marketplace/plugins/
 /codex-continuity
 
 # Private product research and local development context.

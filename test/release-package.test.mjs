@@ -56,6 +56,29 @@ test("release metadata uses one version and a white-listed repository marketplac
   assert.match(gitignore, /^\/codex-continuity$/m);
 });
 
+test("local development installation has a self-contained marketplace", async () => {
+  const marketplace = JSON.parse(
+    await readFile(path.join(root, "scripts", "dev-marketplace", ".agents", "plugins", "marketplace.json"), "utf8"),
+  );
+
+  assert.equal(marketplace.name, "codex-continuity-dev");
+  assert.deepEqual(marketplace.plugins, [
+    {
+      name: "codex-continuity",
+      source: {
+        source: "local",
+        path: "./plugins/codex-continuity",
+      },
+      policy: {
+        installation: "AVAILABLE",
+        authentication: "ON_INSTALL",
+      },
+      category: "Productivity",
+    },
+  ]);
+  assert.match(await readFile(path.join(root, ".gitignore"), "utf8"), /^\/scripts\/dev-marketplace\/plugins\/$/m);
+});
+
 test("bilingual READMEs link to each other and document direct installation", async () => {
   const englishReadme = await readFile(path.join(root, "README.md"), "utf8");
   const chineseReadme = await readFile(path.join(root, "README.zh-CN.md"), "utf8");
@@ -68,13 +91,23 @@ test("bilingual READMEs link to each other and document direct installation", as
     assert.match(readme, /LOCALAPPDATA/);
   }
   assert.match(englishReadme, /href="\.\/README\.zh-CN\.md">简体中文<\/a>/);
+  assert.match(englishReadme, /No preconfigured `personal` Marketplace is required/);
+  assert.match(englishReadme, /automatic title writeback are also verified/);
   assert.match(chineseReadme, /href="\.\/README\.md">English<\/a>/);
+  assert.match(chineseReadme, /无需预先配置 `personal` Marketplace/);
+  assert.match(chineseReadme, /自动标题写回也已通过真机验收/);
   assert.match(englishReadme, /When you state a new goal, Continuity quietly judges/);
   assert.match(englishReadme, /Plugins → Installed → Codex Continuity/);
   assert.match(englishReadme, /select the gear on the far right/);
   assert.match(englishReadme, /enabled toggles do not mean the Hook has been trusted/);
   assert.match(englishReadme, /Current-task and low-confidence decisions stay completely silent/);
+  assert.match(englishReadme, /Medium confidence is enough to ask once/);
+  assert.match(englishReadme, /launches only a high-confidence, safely isolated responsibility/);
+  assert.match(englishReadme, /rejecting the suggestion suppresses it for that goal/);
   assert.match(englishReadme, /explicit standing authorization/);
+  assert.match(englishReadme, /capability toggle makes this workflow available; it is not standing authorization/);
+  assert.match(englishReadme, /add a plain-language rule to that project's `AGENTS\.md`/);
+  assert.match(englishReadme, /skips cross-task matching and title maintenance/);
   assert.match(englishReadme, /Persistent branches, separate tasks, returns, and archives always require confirmation/);
   assert.match(englishReadme, /A copied task link or native cross-task handoff is context for the receiving task, not permission to jump back/);
   assert.match(englishReadme, /single pending cross-task action receipt/);
@@ -84,7 +117,13 @@ test("bilingual READMEs link to each other and document direct installation", as
   assert.match(chineseReadme, /点击这一行最右侧的齿轮/);
   assert.match(chineseReadme, /开关已经打开，不代表 Hook 已被信任/);
   assert.match(chineseReadme, /拿不准时，Continuity 就留在当前任务，不打扰你/);
-  assert.match(chineseReadme, /你已经授权自动委派时/);
+  assert.match(chineseReadme, /中等把握就可以提示一次/);
+  assert.match(chineseReadme, /同一目标不再重复询问/);
+  assert.match(chineseReadme, /共享写入仍留给主任务/);
+  assert.match(chineseReadme, /只有已经授权自动委派、判断把握高且职责能够安全隔离时/);
+  assert.match(chineseReadme, /Skill 开关只代表这项能力可用，不等于自动委派授权/);
+  assert.match(chineseReadme, /在该项目的 `AGENTS\.md` 里直接写/);
+  assert.match(chineseReadme, /不会读取或匹配其他任务，也不会自动维护标题/);
   assert.match(chineseReadme, /开支线、新建任务、回传结果和归档旧任务前，Continuity 都会先征求你的确认/);
   assert.match(chineseReadme, /复制任务深度链接，或由 Codex 从另一项任务转发内容，是给当前任务带入上下文，不是授权跳回旧任务/);
   assert.match(chineseReadme, /最多一条跨任务动作回执/);

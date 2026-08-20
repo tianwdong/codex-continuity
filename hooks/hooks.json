@@ -1,5 +1,5 @@
 {
-  "description": "Reuse matching Codex context, route later durable goals with user control, refresh changed chapters through the current host, and record completed progress locally.",
+  "description": "Reuse matching Codex context, route durable goals with user control, refresh changed chapters through the current host, and record completed progress locally.",
   "hooks": {
     "UserPromptSubmit": [
       {

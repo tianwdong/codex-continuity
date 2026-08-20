@@ -82,7 +82,15 @@ For each new durable goal, Continuity reuses the current Codex model for one lig
 
 ### 4. Recommend or dispatch a suitable subagent · When useful
 
-When work is bounded, independent, and parallel execution would materially improve speed or quality, Continuity offers one short delegation recommendation. With explicit standing authorization for automatic delegation, it may launch the subagent and briefly disclose what it delegated; otherwise it waits for **Run in parallel** or **Do it here**. The main-agent choice remains yours. Profile recommendations may use the latest public [ModelDial Radar](https://modeldial.com/radar) snapshot, without sending your prompt, code, task title, project folder, current configuration, credentials, or telemetry to ModelDial.
+When work is bounded and one responsibility can return independently with a credible benefit—such as a multi-file scan, independent review, cross-platform comparison, test analysis, or non-overlapping implementation—Continuity may offer one short delegation recommendation. Medium confidence is enough to ask once because nothing launches until you choose. You do not have to ask for a subagent explicitly. With standing authorization for automatic delegation, it launches only a high-confidence, safely isolated responsibility; otherwise it waits for **Run in parallel** or **Do it here**. Shared edits stay with the main task, and rejecting the suggestion suppresses it for that goal. The main-agent choice remains yours. Profile recommendations may use the latest public [ModelDial Radar](https://modeldial.com/radar) snapshot, without sending your prompt, code, task title, project folder, current configuration, credentials, or telemetry to ModelDial.
+
+The **Choose a subagent** capability toggle makes this workflow available; it is not standing authorization to launch subagents. By default, Continuity recommends and waits. To allow suitable automatic delegation inside one project, add a plain-language rule to that project's `AGENTS.md`:
+
+```md
+When a task is bounded, independent, and read-only or has no overlapping writes with the main task, you may automatically delegate one native subagent if it clearly reduces waiting or protects the main task's context. Shared writes, persistent branches, separate tasks, and archives still require confirmation.
+```
+
+Remove that rule at any time to return to recommendation-only behavior.
 
 ## A simple way to organize Codex work
 
@@ -91,7 +99,7 @@ When work is bounded, independent, and parallel execution would materially impro
 - Put work that shares files and background in one stable project folder. An app, website, and backend for the same product can all live under the same project root.
 - Create a separate task for each distinct outcome—not for every file, technical layer, or small fix.
 - Continue an existing task when the new request depends on context already built there. Start fresh when the outcome can stand on its own.
-- Quick, self-contained requests can still start without a project folder. Continuity simply avoids automatic context matching when there is no reliable project boundary.
+- Quick, self-contained requests can still start without a project folder. Continuity skips cross-task matching and title maintenance, but the quiet router can still keep the request here or recommend a native subagent using only the current prompt and task context. It does not read other tasks.
 - No `ROADMAP.md`, labels, manual status fields, or second task system is required.
 
 <details>
@@ -121,8 +129,7 @@ Continuity solves this without adding a board, inbox, labels, priorities, or ano
 
 Describe your goal naturally. On the first prompt of a genuinely new task, Continuity reviews tasks inside the same project boundary.
 
-- No strong match: your prompt continues normally.
-- Ambiguous match: your prompt continues normally.
+- No strong or unique match: a durable goal continues through the work router in the same turn; a one-shot question simply runs here.
 - One unique, high-confidence match: Continuity suggests either continuing that task or staying here.
 
 It never sends another message, navigates, archives, forks, or merges a task without your choice.
@@ -181,7 +188,7 @@ Continuity does not interrupt ordinary requests with a workflow menu. When a new
 | Work that does not need the current context | New task |
 | Everything else | Stay in the current task |
 
-Current-task and low-confidence decisions stay completely silent. Subagents consume additional tokens, so Continuity recommends them only for bounded independent work where parallel execution materially improves speed or quality. It does not launch one without direct approval or explicit standing authorization. Persistent branches, separate tasks, returns, and archives always require confirmation.
+Current-task and low-confidence decisions stay completely silent. A reversible recommendation can use a lower threshold: bounded work with a credible independent benefit may prompt once, while launch still requires direct approval or explicit standing authorization. Automatic launch keeps the stricter boundary of high confidence and safely isolated ownership. Persistent branches, separate tasks, returns, and archives always require confirmation.
 
 Only a **Subagent** route enters the downstream delegation Skill; it does not run independently on every request. That Skill uses Codex model roles to narrow the model family and may read the latest public [ModelDial Radar](https://modeldial.com/radar) snapshot to select a configuration within that family. It always states the main-agent recommendation as well as the worker recommendation. The plugin does not switch the main agent automatically, and no prompt, code, task title, working directory, current configuration, credentials, or telemetry is sent to ModelDial.
 
@@ -191,7 +198,7 @@ Only a **Subagent** route enters the downstream delegation Skill; it does not ru
 - A recent Codex or ChatGPT Desktop installation
 - A working model/provider configuration in Codex
 
-Continuity uses two official moments. `UserPromptSubmit` asks the current Codex model to route later durable goals and, after a verified chapter change, use the current host's native title tool. The compatibility-safe `Stop` Hook records progress and keeps a persistence fallback: its entry returns immediately after launching a detached local worker, so it does not depend on asynchronous Hook support. macOS uses the bundled shell entry; Windows uses the official `commandWindows` override, native PowerShell, and the Desktop-bundled Node/Codex runtime when available. If matching works but titles never update, update Continuity and review the current Hook definition again.
+Continuity uses two official moments. `UserPromptSubmit` first checks for reusable same-project context and, when no unique match is found, asks the current Codex model to route that durable goal in the same turn; later durable goals enter the same router directly. After a verified chapter change, the current host may use the native title tool. The compatibility-safe `Stop` Hook records progress and keeps a persistence fallback: its entry returns immediately after launching a detached local worker, so it does not depend on asynchronous Hook support. macOS uses the bundled shell entry; Windows uses the official `commandWindows` override, native PowerShell, and the Desktop-bundled Node/Codex runtime when available. If matching works but titles never update, update Continuity and review the current Hook definition again.
 
 If the plugin is installed but task matching, progress tracking, or title maintenance does not respond, open **Plugins → Installed → Codex Continuity**, select the gear beside **Hooks**, and confirm that the current Hook definition has been reviewed and trusted. The capability toggles above do not replace this step.
 
@@ -220,7 +227,7 @@ Continuity reuses Codex capabilities instead of recreating a conversation system
 
 | Moment | Native source of truth | Continuity adds | Failure behavior |
 | --- | --- | --- | --- |
-| First prompt in a new task | `UserPromptSubmit`, native task list and reads | Review up to three same-directory candidates | Continue the original prompt silently |
+| First prompt in a new task | `UserPromptSubmit`, native task list, reads, and router Skill | Review up to three same-directory candidates; if none is unique, route the original durable goal | Keep one-shot and low-confidence work in the current task |
 | Each later durable goal | `UserPromptSubmit`, router Skill, current Codex model, and native tools | Quietly choose the smallest carrier; after reliable current-task work, refresh only a changed chapter | Stay in the current task and preserve the title |
 | A turn completes | Detached `Stop` worker, `turn_id`, final assistant message | Record chapter/progress; preserve title metadata and fallback persistence | Preserve the existing title and progress |
 | User requests control | Plugin Skill | Inspect, undo, lock, or resume title maintenance | Make no task change |
@@ -240,7 +247,7 @@ Continuity intentionally does **not** provide:
 
 Current technical limits:
 
-- macOS is verified on a real Desktop installation; the native Windows path has automated contract coverage but still needs a real Windows Desktop acceptance run before its beta label is removed;
+- macOS main paths are verified on a real Desktop installation. Windows 11 Marketplace installation, Hook trust, detached `Stop`, and automatic title writeback are also verified; first-prompt matching, title-control commands, and subagent recommendations still need complete Windows acceptance;
 - immediate visible title refresh requires the current Codex host's native title tool; if that tool is unavailable, the detached fallback can persist the title but the sidebar may not show it until Codex reloads the task;
 - an unfinished background Hook may be cancelled when Codex closes the task;
 - the official Plugin UI does not yet expose a stable custom row/action slot in the task sidebar;
@@ -275,7 +282,7 @@ For local development installation on macOS:
 npm run install:plugin:dev -- --wait
 ```
 
-Then quit Codex/ChatGPT. The installer waits for the main app to exit, rebuilds the plugin, installs it, and verifies the manifest, file list, and SHA-256 of every installed file. Do not write directly into `~/.codex/plugins/cache/`.
+Then quit Codex/ChatGPT. The installer waits for the main app to exit, rebuilds the plugin, registers this checkout as the `codex-continuity-dev` Marketplace, installs it, and verifies the manifest, file list, and SHA-256 of every installed file. No preconfigured `personal` Marketplace is required. Do not write directly into `~/.codex/plugins/cache/`.
 
 ## Repository map
 

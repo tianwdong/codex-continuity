@@ -1,6 +1,6 @@
 {
   "name": "codex-continuity",
-  "version": "0.1.12",
+  "version": "0.1.14",
   "description": "A lightweight, local-first Codex plugin for reusing existing task context and maintaining semantic progress.",
   "private": true,
   "license": "MIT",

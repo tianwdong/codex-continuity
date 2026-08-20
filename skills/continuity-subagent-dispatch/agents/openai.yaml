@@ -7,4 +7,4 @@ interface:
   default_prompt: "Use $codex-continuity:continuity-subagent-dispatch to choose a fitting model and effort for this approved subagent delegation."
 
 policy:
-  allow_implicit_invocation: false
+  allow_implicit_invocation: true
