@@ -634,7 +634,7 @@ test("plugin package includes the prompt Hook, matching Skill, work router, and 
   assert.match(dispatchSkill, /`exploration`/);
   assert.match(dispatchSkill, /`demanding`/);
   assert.match(dispatchSkillPrompt, /\$codex-continuity:continuity-subagent-dispatch/);
-  assert.match(dispatchSkill, /Launch first, then briefly disclose/);
+  assert.match(dispatchSkill, /do not show either choice prompt/);
   assert.match(dispatchScript, /ECONOMY_QUALITY_FLOOR_RATIO = 0\.8/);
   assert.match(dispatchScript, /ECONOMY_SCORE_TIE_POINTS = 1/);
   assert.match(dispatchScript, /focused: "gpt-5\.6-luna"/);
@@ -662,4 +662,40 @@ test("subagent dispatch keeps ModelDial advisory, private, dynamic, and failure-
   assert.match(dispatchSkill, /never switch it automatically/);
   assert.match(dispatchSkill, /Never rebuild the result from memory/);
   assert.match(dispatchSkill, /never change the main agent/);
+});
+
+test("subagent dispatch source contract defines bounded handoff and parent acceptance", async () => {
+  const routerSkill = await readFile(new URL("../skills/continuity-work-router/SKILL.md", import.meta.url), "utf8");
+  const dispatchSkill = await readFile(new URL("../skills/continuity-subagent-dispatch/SKILL.md", import.meta.url), "utf8");
+
+  for (const field of [
+    "Goal:",
+    "Scope and ownership:",
+    "Constraints:",
+    "Acceptance criteria:",
+    "Verification:",
+    "Outcome:",
+    "Evidence:",
+    "Artifacts or changed files:",
+    "Unresolved:",
+    "Needs branch:",
+  ]) {
+    assert.match(dispatchSkill, new RegExp(field));
+  }
+
+  assert.match(dispatchSkill, /Never paste the full parent conversation/);
+  assert.match(dispatchSkill, /Make the worker a leaf by default/);
+  assert.match(dispatchSkill, /Do not edit the user's global agent configuration/);
+  assert.match(dispatchSkill, /The parent independently checks the critical evidence/);
+  assert.match(dispatchSkill, /may send at most one focused correction/);
+  assert.match(dispatchSkill, /Otherwise handle it in the parent or report it as unresolved/);
+  assert.match(dispatchSkill, /Only the parent may declare the user's task complete/);
+  assert.match(dispatchSkill, /automatically authorized launch gets one brief kickoff/);
+  assert.match(dispatchSkill, /A kickoff is not the terminal receipt/);
+  assert.match(dispatchSkill, /After the worker returns and parent acceptance completes/);
+  assert.match(dispatchSkill, /Never present the selector recommendation as proof/);
+  assert.match(dispatchSkill, /never run a tool or network request only to manufacture receipt evidence/);
+  assert.match(routerSkill, /dispatch[\s\S]*owns the internal task contract/);
+  assert.match(routerSkill, /`Needs branch: yes`[\s\S]*evidence only/);
+  assert.match(routerSkill, /explicitly chose `并行处理`[\s\S]*do not duplicate native activity/);
 });

@@ -16,6 +16,33 @@ Write every user-facing response in the language of the user's latest request. L
 - Preserve the exact bounded responsibility chosen by the parent. Do not widen it, turn it into a branch, or create a user-visible task.
 - Obey system instructions, the nearest `AGENTS.md`, explicit user configuration, and required agent types before applying any model or effort recommendation.
 
+## Build the internal delegation contract
+
+Before launch, the parent must define a compact internal contract. This is not a form for the user and must not be persisted as another task record:
+
+- **Goal:** the one result the worker must return.
+- **Scope and ownership:** the exact responsibility and, for edits, the files or module the worker owns. State that other work may be happening in the shared workspace and that the worker must not revert or overwrite unrelated changes.
+- **Constraints:** applicable instructions, exclusions, safety boundaries, and actions that still require the parent or user.
+- **Acceptance criteria:** observable conditions that distinguish a useful result from a plausible-sounding report.
+- **Verification:** the smallest checks the worker should run and the evidence the parent will inspect.
+
+Pass only the facts, file paths, decisions, and recent evidence required by that contract. Never paste the full parent conversation, unrelated project history, credentials, or large raw logs. When the native tool exposes context inheritance, choose the smallest history sufficient for the assignment.
+
+Make the worker a leaf by default: tell it not to delegate further unless a higher-priority instruction or the parent explicitly authorizes nested delegation. Do not edit the user's global agent configuration to enforce this.
+
+Require a concise return in this shape; use `none` where a field does not apply:
+
+```text
+Outcome: <what was established or completed>
+Evidence: <specific files, observations, or artifacts>
+Artifacts or changed files: <paths or none>
+Verification: <checks run and outcomes>
+Unresolved: <remaining risks or none>
+Needs branch: <yes or no; reason only when yes>
+```
+
+Do not ask for chain-of-thought, hidden reasoning, the full conversation, or unbounded command output. A `Needs branch: yes` return is evidence for a parent-side branch decision, never permission to create one.
+
 ## Choose one mode
 
 - Use **economy** by default. Keep the best published main-agent configuration as an internal quality anchor, then select the worker family from the delegated task shape and the exact effort from the same published snapshot.
@@ -82,14 +109,23 @@ If the selector is unavailable or invalid, keep the original lightweight subagen
 回复「并行处理」或「就在这里做」。
 ```
 
-When delegation is already authorized by a direct request, a pending choice, a standing instruction, or a higher-priority rule, do not show either choice prompt. Launch first, then briefly disclose the bounded responsibility and the worker configuration actually used.
+When delegation is already authorized by a direct request, a pending choice, a standing instruction, or a higher-priority rule, do not show either choice prompt. Only an automatically authorized launch gets one brief kickoff after the native tool accepts it, stating the bounded responsibility and the worker configuration actually used. When the user just chose `并行处理` or directly requested delegation, rely on the native activity instead of adding another kickoff. A kickoff is not the terminal receipt.
 
 ## Execute the approved delegation
 
 1. Use the native collaboration or subagent tool, not `create_thread` or `fork_thread`.
 2. Preserve any required `agent_type`. Apply only the recommended worker `model` and `reasoning_effort`, and only when the native tool exposes those fields and every higher-priority rule permits the exact override. If an applicable rule forbids model overrides, use its required agent profile unchanged.
-3. Give the subagent one bounded responsibility and warn it about shared-workspace edits when applicable.
+3. Send the internal delegation contract and its minimal context. Do not replace the contract with a broad request such as “review everything” or “finish the task”.
 4. If the exact model or effort is rejected or unavailable, continue once with the currently permitted worker configuration while the original delegation consent remains valid. Briefly disclose the fallback; never change the main agent.
-5. Wait for the result, verify it proportionately, and synthesize it into the parent task. The parent owns integration and final acceptance.
+5. Wait for the structured return. If it is missing evidence or verification, treat the corresponding acceptance criterion as unproven rather than filling it in from inference.
 6. Never rename, archive, navigate to, match against, or present the subagent as a user task.
 7. Use one subagent unless multiple independent, non-overlapping workstreams materially improve speed or quality. Obey native concurrency limits and never create parallel writers for the same files.
+
+## Accept the result in the parent
+
+1. Compare the return with the acceptance criteria written before launch. The parent independently checks the critical evidence and runs the smallest relevant verification; a worker's success claim is not acceptance by itself.
+2. If one criterion fails, the same worker is still available, and the correction remains inside the original scope, the parent may send at most one focused correction to that worker. Otherwise handle it in the parent or report it as unresolved. Do not widen the assignment or create another worker merely to obtain a passing report.
+3. Integrate only verified results. Record unrelated findings as unresolved follow-up instead of silently expanding the current task.
+4. Only the parent may declare the user's task complete, synthesize the final answer, or decide that persistent follow-up needs a confirmed branch.
+
+After the worker returns and parent acceptance completes, append at most one short terminal receipt to the parent's final response. If launch or fallback fails terminally before a return, report that failure once instead. Base the receipt only on observed facts: the bounded responsibility sent, the worker configuration the native tool actually accepted when known, whether more than one worker really ran, and the verification actually completed. Never present the selector recommendation as proof of the configuration used, never show a receipt for a current-task decision, and never run a tool or network request only to manufacture receipt evidence.

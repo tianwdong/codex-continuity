@@ -84,6 +84,8 @@ For each new durable goal, Continuity reuses the current Codex model for one lig
 
 When work is bounded and one responsibility can return independently with a credible benefit—such as a multi-file scan, independent review, cross-platform comparison, test analysis, or non-overlapping implementation—Continuity may offer one short delegation recommendation. Medium confidence is enough to ask once because nothing launches until you choose. You do not have to ask for a subagent explicitly. With standing authorization for automatic delegation, it launches only a high-confidence, safely isolated responsibility; otherwise it waits for **Run in parallel** or **Do it here**. Shared edits stay with the main task, and rejecting the suggestion suppresses it for that goal. The main-agent choice remains yours. Profile recommendations may use the latest public [ModelDial Radar](https://modeldial.com/radar) snapshot, without sending your prompt, code, task title, project folder, current configuration, credentials, or telemetry to ModelDial.
 
+A subagent handles only its bounded assignment; the main task verifies the returned evidence before presenting the result to you.
+
 The **Choose a subagent** capability toggle makes this workflow available; it is not standing authorization to launch subagents. By default, Continuity recommends and waits. To allow suitable automatic delegation inside one project, add a plain-language rule to that project's `AGENTS.md`:
 
 ```md

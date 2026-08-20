@@ -116,11 +116,11 @@ Creating a persistent branch or separate task, returning work to another task, a
 2. Obey the current system instructions and applicable `AGENTS.md` or Skill rules. A direct user request for a subagent, an applicable higher-priority instruction, an explicit standing auto-delegation instruction, or the explicit “并行处理” choice can authorize delegation; this Skill alone cannot.
 3. Give each subagent one bounded responsibility. User confirmation does not authorize overlapping writers. Keep shared mutable edits with the parent and narrow the subagent to independent implementation, read-only review, testing, or verification.
 4. Use one subagent by default. Add another only for an independent, non-overlapping workstream that materially improves speed or quality; obey native concurrency and ownership rules.
-5. Wait for the result, verify it proportionately, and synthesize it into the current parent task.
+5. Hand the bounded responsibility to `continuity-subagent-dispatch`. That Skill owns the internal task contract, minimum-context handoff, fixed return shape, permitted worker configuration, fallback, and parent acceptance protocol.
 6. Never rename, archive, navigate to, match against, or present a subagent thread as a user task. The parent owns the outcome.
-7. If the work becomes persistent or needs future user steering, have the subagent return a concise `needs_branch` summary. Ask the branch choice in the parent; never silently promote the subagent thread.
+7. If the structured return says `Needs branch: yes`, treat it as evidence only. Ask the branch choice in the parent; never silently promote the subagent thread.
 8. Let `continuity-subagent-dispatch` apply any permitted model or reasoning-effort override. Never duplicate its fallback or change the main agent here.
-9. After an automatically authorized launch, give one brief disclosure in the parent task. Do not turn it into a second approval step or expose internal classification details.
+9. For an automatically authorized launch, allow only the one kickoff defined by the dispatch Skill. Its terminal receipt comes only after parent acceptance. When the user explicitly chose `并行处理` or directly requested delegation, do not duplicate native activity with another kickoff. Do not turn either message into a second approval step or expose internal classification details.
 
 ## Execute an approved branch route
 
