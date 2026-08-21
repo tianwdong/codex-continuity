@@ -7,7 +7,7 @@
           {
             "type": "command",
             "command": "/bin/sh \"$PLUGIN_ROOT/scripts/run-prompt-hook.sh\"",
-            "commandWindows": "powershell.exe -NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File \"${PLUGIN_ROOT}\\scripts\\run-plugin-node.ps1\" -Mode prompt",
+            "commandWindows": "powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"${PLUGIN_ROOT}\\scripts\\run-plugin-node.ps1\" -Mode prompt",
             "additionalContextLimit": 600,
             "async": false,
             "timeout": 5
@@ -21,7 +21,7 @@
           {
             "type": "command",
             "command": "/bin/sh \"$PLUGIN_ROOT/scripts/run-stop-hook.sh\"",
-            "commandWindows": "powershell.exe -NoLogo -NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File \"${PLUGIN_ROOT}\\scripts\\run-plugin-node.ps1\" -Mode stop",
+            "commandWindows": "powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"${PLUGIN_ROOT}\\scripts\\run-plugin-node.ps1\" -Mode stop",
             "statusMessage": "Updating task status…",
             "timeout": 60
           }

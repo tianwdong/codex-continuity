@@ -825,7 +825,7 @@ test("plugin package uses the default bundled Hook location", async () => {
   assert.equal(hooks.hooks.Stop[0].hooks[0].statusMessage, "Updating task status…");
   assert.match(hooks.hooks.Stop[0].hooks[0].command, /PLUGIN_ROOT/);
   assert.match(hooks.hooks.Stop[0].hooks[0].commandWindows, /powershell\.exe/);
-  assert.match(hooks.hooks.Stop[0].hooks[0].commandWindows, /-WindowStyle Hidden/);
+  assert.doesNotMatch(hooks.hooks.Stop[0].hooks[0].commandWindows, /-WindowStyle/);
   assert.match(hooks.hooks.Stop[0].hooks[0].commandWindows, /\$\{PLUGIN_ROOT\}/);
   assert.doesNotMatch(hooks.hooks.Stop[0].hooks[0].commandWindows, /\$env:PLUGIN_ROOT/);
   assert.match(hooks.hooks.Stop[0].hooks[0].commandWindows, /run-plugin-node\.ps1/);
