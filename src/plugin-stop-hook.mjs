@@ -191,6 +191,39 @@ export function buildHookCandidate(event, thread, fallbackTitle = "") {
   };
 }
 
+function initialTitleFromProgress(item) {
+  if (item?.progressDecision !== "update" || item?.progressConfidence !== "high") return "";
+  const title = String(item?.progressChapter || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 32);
+  if (title.length < 2 || title.includes("｜") || /[\n\r]/.test(title)) return "";
+  return title;
+}
+
+async function initializeMissingNativeTitle(item, { appServer, titleLedger }) {
+  const title = initialTitleFromProgress(item);
+  if (!title || !appServer?.readThread || !appServer?.setThreadName) return null;
+
+  const fresh = await appServer.readThread(item.threadId, { includeTurns: false });
+  if (!fresh?.thread || nativeTitle(fresh.thread)) return null;
+
+  await appServer.setThreadName(item.threadId, title);
+  const verified = await appServer.readThread(item.threadId, { includeTurns: false });
+  if (nativeTitle(verified?.thread) !== title) return null;
+
+  titleLedger.observe(verified.thread);
+  titleLedger.recordEvaluated(verified.thread, item.turnId);
+  return {
+    type: "initial_title_set",
+    decision: "initialize",
+    threadId: item.threadId,
+    turnId: item.turnId,
+    previousTitle: "",
+    title,
+  };
+}
+
 export async function maintainContinuityForStop(input, {
   appServer,
   titleLedger,
@@ -267,6 +300,13 @@ export async function maintainContinuityForStop(input, {
     return change
       ? { status: "renamed", change, progress: null, ...event }
       : { status: "ignored", reason: "semantic_decision_unavailable", ...event };
+  }
+
+  if (!candidate.titleMetadataAvailable && !change) {
+    try {
+      change = await initializeMissingNativeTitle(decided, { appServer, titleLedger });
+      if (change) candidate.nativeTitle = change.title;
+    } catch (_) {}
   }
 
   let progressChanged = false;

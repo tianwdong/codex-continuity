@@ -168,7 +168,7 @@ No command is required for everyday work.
 1. Create a task and describe the goal naturally.
 2. If Continuity finds one reliable existing context, choose whether to continue it or stay in the new task.
 3. State later goals normally. Continuity quietly chooses the smallest carrier and asks only before a durable structure change.
-4. Let Codex finish a turn. Continuity records a short local progress marker and updates the title only when the chapter has clearly changed.
+4. Let Codex finish a turn. Continuity records a short local progress marker and updates the title only when the chapter has clearly changed. If the CLI still has no title after the first reliable turn, it fills the missing initial title from that same high-confidence progress result.
 
 You can also ask in natural language:
 
@@ -200,7 +200,9 @@ Only a **Subagent** route enters the downstream delegation Skill; it does not ru
 - A recent Codex or ChatGPT Desktop installation
 - A working model/provider configuration in Codex
 
-Continuity uses two official moments. `UserPromptSubmit` first checks for reusable same-project context and, when no unique match is found, asks the current Codex model to route that durable goal in the same turn; later durable goals enter the same router directly. After a verified chapter change, the current host may use the native title tool. The compatibility-safe `Stop` Hook records progress and keeps a persistence fallback: its entry returns immediately after launching a detached local worker, so it does not depend on asynchronous Hook support. macOS uses the bundled shell entry; Windows uses the official `commandWindows` override, native PowerShell, and the Desktop-bundled Node/Codex runtime when available. If matching works but titles never update, update Continuity and review the current Hook definition again.
+Continuity uses two official moments. `UserPromptSubmit` first checks for reusable same-project context and, when no unique match is found, asks the current Codex model to route that durable goal in the same turn; later durable goals enter the same router directly. After a verified chapter change, the current host may use the native title tool. The compatibility-safe `Stop` Hook records progress and keeps a persistence fallback. If a CLI root task still has no native title after a reliable completed turn, the same worker re-reads the task and fills the missing initial title from that turn's high-confidence progress chapter only while the title remains blank. Its entry returns immediately after launching a detached local worker, so it does not depend on asynchronous Hook support. macOS uses the bundled shell entry; Windows uses the official `commandWindows` override, native PowerShell, and the Desktop-bundled Node/Codex runtime when available. If matching works but titles never update, update Continuity and review the current Hook definition again.
+
+Continuity does not register `PreToolUse`. If the CLI reports `PreToolUse hook (failed)`, use `/hooks` to identify the user-level or third-party Hook that owns it; that error is not emitted by Continuity's subagent dispatch path.
 
 If the plugin is installed but task matching, progress tracking, or title maintenance does not respond, open **Plugins → Installed → Codex Continuity**, select the gear beside **Hooks**, and confirm that the current Hook definition has been reviewed and trusted. The capability toggles above do not replace this step.
 
@@ -231,7 +233,7 @@ Continuity reuses Codex capabilities instead of recreating a conversation system
 | --- | --- | --- | --- |
 | First prompt in a new task | `UserPromptSubmit`, native task list, reads, and router Skill | Review up to three same-directory candidates; if none is unique, route the original durable goal | Keep one-shot and low-confidence work in the current task |
 | Each later durable goal | `UserPromptSubmit`, router Skill, current Codex model, and native tools | Quietly choose the smallest carrier; after reliable current-task work, refresh only a changed chapter | Stay in the current task and preserve the title |
-| A turn completes | Detached `Stop` worker, `turn_id`, final assistant message | Record chapter/progress; preserve title metadata and fallback persistence | Preserve the existing title and progress |
+| A turn completes | Detached `Stop` worker, `turn_id`, final assistant message | Record chapter/progress; preserve title metadata and fallback persistence; initialize a still-blank CLI title | Preserve the existing title and progress |
 | User requests control | Plugin Skill | Inspect, undo, lock, or resume title maintenance | Make no task change |
 
 The semantic model makes bounded judgments; it does not own task state. Codex App Server remains authoritative for tasks, lineage, reads, and title operations. Uncertain paths fail closed.

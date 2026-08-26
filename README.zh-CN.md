@@ -158,7 +158,7 @@ Continuity 让标题反映任务现在真正做到哪里，而不是永远停在
 1. 新建任务，照常用自然语言描述目标。
 2. 如果 Continuity 找到一个明确的旧任务，选择继续它或留在这里。
 3. 后续继续说目标。大多数请求会直接工作，只有开支线或新建任务时需要确认。
-4. 一轮结束后，Continuity 会记下做到哪里，并在方向真正变化时维护标题。
+4. 一轮结束后，Continuity 会记下做到哪里，并在方向真正变化时维护标题；如果 CLI 首轮结束后仍没有生成标题，它会用本轮高置信进展补上首标题。
 
 需要时，可以直接说：
 
@@ -182,7 +182,9 @@ macOS 主路径已在真实 Desktop 中验证。Windows 11 的 Marketplace 安�
 <details>
 <summary>查看版本与运行时细节</summary>
 
-Continuity 复用两个官方时机：`UserPromptSubmit` 先检查同项目里可复用的上下文；没有唯一候选时，同一轮继续判断原目标该留在当前任务、建议子智能体、开支线还是新建，后续目标则直接进入这套判断。可靠结果进入新章节时，当前宿主可以调用原生标题工具。兼容型 `Stop` Hook 负责记录进展和持久化兜底。Stop 入口启动本地后台 worker 后立即返回，不依赖 Codex runtime 是否支持异步 Hook。macOS 使用插件自带的 Shell 入口；Windows 使用官方 `commandWindows`、原生 PowerShell，并优先复用 Desktop 内置的 Node／Codex runtime。
+Continuity 复用两个官方时机：`UserPromptSubmit` 先检查同项目里可复用的上下文；没有唯一候选时，同一轮继续判断原目标该留在当前任务、建议子智能体、开支线还是新建，后续目标则直接进入这套判断。可靠结果进入新章节时，当前宿主可以调用原生标题工具。兼容型 `Stop` Hook 负责记录进展和持久化兜底；如果 CLI 根任务在可靠一轮结束后仍没有原生标题，它只会在回读确认标题依然为空时，复用同一轮的高置信进展章节补上首标题。Stop 入口启动本地后台 worker 后立即返回，不依赖 Codex runtime 是否支持异步 Hook。macOS 使用插件自带的 Shell 入口；Windows 使用官方 `commandWindows`、原生 PowerShell，并优先复用 Desktop 内置的 Node／Codex runtime。
+
+Continuity 不注册 `PreToolUse`。如果 CLI 显示 `PreToolUse hook (failed)`，请在 `/hooks` 中检查用户级或其他插件的 Hook 来源；该错误不是 Continuity 的子智能体派遣入口。
 
 </details>
 
@@ -213,7 +215,7 @@ Continuity 直接复用 Codex 的任务、模型和原生操作，不另外维�
 | --- | --- | --- | --- |
 | 新任务第一次输入 | `UserPromptSubmit`、原生任务列表、任务读取和路由 Skill | 检查最多 3 个同目录候选；没有唯一候选时继续判断原目标该走哪条路径 | 普通小问题和低置信目标留在当前任务 |
 | 你提出后续目标 | `UserPromptSubmit`、路由 Skill、当前 Codex 模型和原生工具 | 判断继续、并行、开支线还是新建；更新已经变化的章节，旧主线已误导定位时才替换主标题 | 留在当前任务并保留标题 |
-| 一轮工作完成 | `Stop` 后台 worker、`turn_id` 和最终回复 | 记录短进展、标题元数据和持久化兜底 | 保留现有标题和进展 |
+| 一轮工作完成 | `Stop` 后台 worker、`turn_id` 和最终回复 | 记录短进展、标题元数据和持久化兜底；CLI 原生标题仍为空时补上首标题 | 保留现有标题和进展 |
 | 你要求查看或撤销 | 插件 Skill | 查看、撤销、暂停或恢复标题维护 | 不改变任务 |
 
 模型只负责判断，不拥有任务状态。任务关系、读取和标题操作仍以 Codex App Server 为准；任何一步拿不准，插件都会保持原状。

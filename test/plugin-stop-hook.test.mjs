@@ -257,7 +257,7 @@ test("never uses the thread preview as semantic title input", () => {
   assert.doesNotMatch(JSON.stringify(candidate), /private user prompt/);
 });
 
-test("records first-turn progress without replacing Codex's initial title", async () => {
+test("records first-turn progress without replacing Codex's existing initial title", async () => {
   const thread = { ...threadFixture(), turns: threadFixture().turns.slice(0, 1) };
   const progressLedger = new ProgressLedger();
   const result = await maintainContinuityForStop(stopPayload({
@@ -282,6 +282,110 @@ test("records first-turn progress without replacing Codex's initial title", asyn
   assert.equal(result.status, "progress_updated");
   assert.equal(thread.name, "接入 Google Analytics");
   assert.equal(progressLedger.current("thread-1").sourceTurnId, "turn-1");
+});
+
+test("initializes a blank CLI root title from high-confidence first-turn progress", async () => {
+  let thread = {
+    ...threadFixture(),
+    name: "",
+    turns: threadFixture().turns.slice(0, 1),
+  };
+  let writes = 0;
+  const progressLedger = new ProgressLedger();
+  const titleLedger = new TitleLedger();
+  const result = await maintainContinuityForStop(stopPayload({
+    turnId: "turn-1",
+    assistantMessage: "Windows Hook 信任说明检查已完成。",
+  }), {
+    appServer: {
+      async readThread() { return { thread }; },
+      async setThreadName(_threadId, name) {
+        writes += 1;
+        thread = { ...thread, name };
+      },
+    },
+    titleLedger,
+    progressLedger,
+    decideTitles: async (items) => items.map((item) => ({
+      ...item,
+      titleDecision: "keep",
+      progressDecision: "update",
+      progressChapter: "Windows Hook 信任说明",
+      progressSummary: "Windows Hook 信任说明检查已完成",
+      progressConfidence: "high",
+    })),
+  });
+
+  assert.equal(result.status, "renamed");
+  assert.equal(result.change.type, "initial_title_set");
+  assert.equal(thread.name, "Windows Hook 信任说明");
+  assert.equal(writes, 1);
+  assert.equal(progressLedger.current("thread-1").nativeTitle, "Windows Hook 信任说明");
+  assert.equal(titleLedger.status("thread-1").undoAvailable, false);
+});
+
+test("keeps a blank CLI root title when first-turn progress confidence is not high", async () => {
+  const thread = {
+    ...threadFixture(),
+    name: "",
+    turns: threadFixture().turns.slice(0, 1),
+  };
+  let writes = 0;
+  const result = await maintainContinuityForStop(stopPayload({ turnId: "turn-1" }), {
+    appServer: {
+      async readThread() { return { thread }; },
+      async setThreadName() { writes += 1; },
+    },
+    titleLedger: new TitleLedger(),
+    progressLedger: new ProgressLedger(),
+    decideTitles: async (items) => items.map((item) => ({
+      ...item,
+      titleDecision: "keep",
+      progressDecision: "update",
+      progressChapter: "仍需确认的进展",
+      progressSummary: "当前证据还不足以形成稳定首标题",
+      progressConfidence: "medium",
+    })),
+  });
+
+  assert.equal(result.status, "progress_updated");
+  assert.equal(result.change, null);
+  assert.equal(thread.name, "");
+  assert.equal(writes, 0);
+});
+
+test("does not overwrite a native title that appears before blank-title fallback writes", async () => {
+  let thread = {
+    ...threadFixture(),
+    name: "",
+    turns: threadFixture().turns.slice(0, 1),
+  };
+  let reads = 0;
+  let writes = 0;
+  const result = await maintainContinuityForStop(stopPayload({ turnId: "turn-1" }), {
+    appServer: {
+      async readThread() {
+        reads += 1;
+        if (reads === 2) thread = { ...thread, name: "Codex 原生标题" };
+        return { thread };
+      },
+      async setThreadName() { writes += 1; },
+    },
+    titleLedger: new TitleLedger(),
+    progressLedger: new ProgressLedger(),
+    decideTitles: async (items) => items.map((item) => ({
+      ...item,
+      titleDecision: "keep",
+      progressDecision: "update",
+      progressChapter: "不应覆盖的标题",
+      progressSummary: "本轮结果已经可靠完成",
+      progressConfidence: "high",
+    })),
+  });
+
+  assert.equal(result.status, "progress_updated");
+  assert.equal(thread.name, "Codex 原生标题");
+  assert.equal(writes, 0);
 });
 
 test("uses the Stop message immediately when App Server has not stored the turn", async () => {
