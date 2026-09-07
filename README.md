@@ -196,6 +196,8 @@ Only a **Subagent** route enters the downstream delegation Skill; it does not ru
 
 ## Compatibility
 
+Windows proxy troubleshooting: background title requests inherit `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, and `NO_PROXY`. If absent from the process, the Windows launcher reads explicitly configured user environment variables without changing system settings. Enabling the Windows system proxy alone does not guarantee that Codex CLI uses it. Semantic requests have a 150-second limit and report `semantic_timeout`; spawn failures, nonzero exits, and invalid JSON have separate diagnostic codes. This does not guarantee connectivity on restricted networks.
+
 - macOS or Windows 11
 - A recent Codex or ChatGPT Desktop installation
 - A working model/provider configuration in Codex

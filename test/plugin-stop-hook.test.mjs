@@ -428,6 +428,19 @@ test("records progress even when task metadata is temporarily unavailable", asyn
   assert.equal(progressLedger.current("thread-1"), null);
 });
 
+test("reports a semantic timeout without writing title or progress", async () => {
+  const result = await maintainContinuityForStop(stopPayload(), {
+    appServer: { async readThread() { return { thread: threadFixture() }; } },
+    titleLedger: new TitleLedger(), progressLedger: new ProgressLedger(),
+    decideTitles: async (items, options) => {
+      assert.equal(options.timeoutMs, 150_000);
+      return items.map((item) => ({ ...item, semanticFailure: "semantic_timeout" }));
+    },
+  });
+  assert.equal(result.status, "ignored");
+  assert.equal(result.reason, "semantic_timeout");
+});
+
 test("reads current turn context once before semantic evaluation", async () => {
   const progressLedger = new ProgressLedger();
   const titleLedger = new TitleLedger();

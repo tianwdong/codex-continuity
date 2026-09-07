@@ -294,12 +294,12 @@ export async function maintainContinuityForStop(input, {
     cwd: os.tmpdir(),
     env: semanticEnvironment(),
     codexAvailable,
-    timeoutMs: 30_000,
+    timeoutMs: 150_000,
   });
   if (!decided.titleDecision && !decided.progressDecision) {
     return change
       ? { status: "renamed", change, progress: null, ...event }
-      : { status: "ignored", reason: "semantic_decision_unavailable", ...event };
+      : { status: "ignored", reason: decided.semanticFailure || "semantic_decision_unavailable", ...event };
   }
 
   if (!candidate.titleMetadataAvailable && !change) {

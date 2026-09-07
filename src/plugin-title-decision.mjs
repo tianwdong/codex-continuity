@@ -131,6 +131,7 @@ function defaultCodexEnvironment() {
     "CODEX_HOME",
     "HTTPS_PROXY",
     "HTTP_PROXY",
+    "ALL_PROXY",
     "NO_PROXY",
     "SSL_CERT_FILE",
   ];
@@ -367,7 +368,7 @@ function runCodexExec({ command, cwd, env, payload, spawnImpl, timeoutMs, mcpSer
         windowsHide: true,
       });
     } catch (_) {
-      resolve({ ok: false });
+      resolve({ ok: false, reason: "semantic_spawn_failed" });
       return;
     }
 
@@ -381,11 +382,13 @@ function runCodexExec({ command, cwd, env, payload, spawnImpl, timeoutMs, mcpSer
       resolve(value);
     };
     const timer = setTimeout(() => {
+      finish({ ok: false, reason: "semantic_timeout" });
       try { child.kill("SIGTERM"); } catch (_) {}
-      finish({ ok: false });
     }, timeoutMs);
 
     child.stdout?.setEncoding?.("utf8");
+    // Drain diagnostics without retaining potentially sensitive stderr content.
+    child.stderr?.resume?.();
     child.stdout?.on?.("data", (chunk) => {
       if (overflow) return;
       stdout += chunk;
@@ -394,22 +397,23 @@ function runCodexExec({ command, cwd, env, payload, spawnImpl, timeoutMs, mcpSer
         stdout = "";
       }
     });
-    child.once?.("error", () => finish({ ok: false }));
+    child.once?.("error", () => finish({ ok: false, reason: "semantic_spawn_failed" }));
     child.once?.("close", (code) => {
       if (code !== 0 || overflow) {
-        finish({ ok: false });
+        finish({ ok: false, reason: overflow ? "semantic_output_too_large" : "semantic_nonzero_exit" });
         return;
       }
       try {
         finish({ ok: true, value: JSON.parse(stdout.trim()) });
       } catch (_) {
-        finish({ ok: false });
+        finish({ ok: false, reason: "semantic_invalid_json" });
       }
     });
     try {
       child.stdin.end(JSON.stringify(payload));
     } catch (_) {
-      finish({ ok: false });
+      finish({ ok: false, reason: "semantic_input_failed" });
+      try { child.kill("SIGTERM"); } catch (_) {}
     }
   });
 }
@@ -421,7 +425,7 @@ export async function decideTitlesWithCodex(
     cwd = os.tmpdir(),
     env = defaultCodexEnvironment(),
     spawnImpl = nodeSpawn,
-    timeoutMs = 30_000,
+    timeoutMs = 150_000,
     codexAvailable = true,
     mcpServerNames = null,
   } = {},
@@ -431,7 +435,7 @@ export async function decideTitlesWithCodex(
   let isolatedMcpServerNames = mcpServerNames;
   if (!Array.isArray(isolatedMcpServerNames)) {
     const discovery = await discoverMcpServerNames({ command, cwd, env, spawnImpl });
-    if (!discovery.ok) return Array.isArray(items) ? items : [];
+    if (!discovery.ok) return items.map((item) => ({ ...item, semanticFailure: "semantic_mcp_discovery_failed" }));
     isolatedMcpServerNames = discovery.value;
   }
   if (isolatedMcpServerNames.some((name) => !SAFE_MCP_NAME.test(name))) {
@@ -446,6 +450,6 @@ export async function decideTitlesWithCodex(
     timeoutMs,
     mcpServerNames: isolatedMcpServerNames,
   });
-  if (!execution.ok) return Array.isArray(items) ? items : [];
+  if (!execution.ok) return items.map((item) => ({ ...item, semanticFailure: execution.reason }));
   return applyTitleDecisions(items, execution.value);
 }

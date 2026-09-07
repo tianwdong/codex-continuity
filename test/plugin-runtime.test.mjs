@@ -75,6 +75,16 @@ test("keeps Windows account and temp variables for semantic Codex calls", () => 
   });
 });
 
+test("forwards explicit Windows proxy settings without unrelated secrets", () => {
+  assert.deepEqual(semanticEnvironment({
+    https_proxy: "http://127.0.0.1:7890", HTTP_PROXY: "http://127.0.0.1:7890",
+    ALL_PROXY: "socks5://127.0.0.1:7891", NO_PROXY: "localhost", SECRET: "private",
+  }, "win32"), {
+    HTTPS_PROXY: "http://127.0.0.1:7890", HTTP_PROXY: "http://127.0.0.1:7890",
+    ALL_PROXY: "socks5://127.0.0.1:7891", NO_PROXY: "localhost",
+  });
+});
+
 test("a stale lock holder cannot release a newer owner lock", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "continuity-lock-"));
   const lockPath = path.join(directory, "thread.lock");

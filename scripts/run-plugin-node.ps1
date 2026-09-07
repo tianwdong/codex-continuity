@@ -29,6 +29,15 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+# Existing process settings take precedence; refresh explicitly configured user values.
+foreach ($name in @("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY")) {
+  if ($null -eq [Environment]::GetEnvironmentVariable($name, "Process")) {
+    $userValue = [Environment]::GetEnvironmentVariable($name, "User")
+    if (-not [string]::IsNullOrWhiteSpace($userValue)) {
+      [Environment]::SetEnvironmentVariable($name, $userValue, "Process")
+    }
+  }
+}
 $pluginRoot = if ($env:PLUGIN_ROOT) {
   $env:PLUGIN_ROOT
 } else {

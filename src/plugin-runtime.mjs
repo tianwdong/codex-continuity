@@ -3,7 +3,8 @@ import { createHash, randomUUID } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 
-const STALE_LOCK_MS = 120_000;
+// Cover MCP discovery, the 150-second semantic request, and title writeback.
+const STALE_LOCK_MS = 300_000;
 
 function environmentValue(environment, name, platform) {
   if (environment[name] !== undefined) return environment[name];
@@ -196,6 +197,7 @@ export function semanticEnvironment(environment = process.env, platform = proces
     "CODEX_HOME",
     "HTTPS_PROXY",
     "HTTP_PROXY",
+    "ALL_PROXY",
     "NO_PROXY",
     "SSL_CERT_FILE",
   ];

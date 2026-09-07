@@ -709,6 +709,21 @@ test("keeps Codex's native title unless a completed turn proves substantial drif
   assert.equal(decided[0].progressChapter, "Cloudflare 费用止损");
 });
 
+test("title request failures are distinguishable and preserve the original title", async () => {
+  const items = [{ threadId: "t", nativeTitle: "Original", assistantMessage: "Implemented tests." }];
+  for (const [spawnImpl, expected] of [
+    [fakeSpawn("not json"), "semantic_invalid_json"],
+    [fakeSpawn({}, { exitCode: 1 }), "semantic_nonzero_exit"],
+    [fakeSpawn({}, { neverClose: true }), "semantic_timeout"],
+    [() => { throw new Error("spawn failed"); }, "semantic_spawn_failed"],
+  ]) {
+    const result = await decideTitlesWithCodex(items, { spawnImpl, mcpServerNames: [], timeoutMs: 10 });
+    assert.equal(result[0].semanticFailure, expected);
+    assert.equal(result[0].nativeTitle, "Original");
+    assert.equal(result[0].titleDecision, undefined);
+  }
+});
+
 test("keeps the rules snapshot when Codex fails or times out", async () => {
   const input = withRulesOrganization(snapshotFixture(), { codexAvailable: true });
   const failed = await organizeSnapshotWithCodex(input, {

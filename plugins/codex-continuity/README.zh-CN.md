@@ -182,6 +182,8 @@ macOS 主路径已在真实 Desktop 中验证。Windows 11 的 Marketplace 安�
 <details>
 <summary>查看版本与运行时细节</summary>
 
+Windows 网络排查：后台标题请求会继承进程中的 `HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY` 和 `NO_PROXY`；进程未设置时，Windows 入口会补读你已经配置的同名用户环境变量，不会修改系统设置。只打开 Windows「系统代理」不等于 Codex CLI 能使用该代理。后台语义请求最多等待 150 秒，超时会记录 `semantic_timeout`；启动失败、进程异常退出和无效 JSON 分别记录不同原因，不再全部归为无法生成标题。这不保证受限网络必然可用。
+
 Continuity 复用两个官方时机：`UserPromptSubmit` 先检查同项目里可复用的上下文；没有唯一候选时，同一轮继续判断原目标该留在当前任务、建议子智能体、开支线还是新建，后续目标则直接进入这套判断。可靠结果进入新章节时，当前宿主可以调用原生标题工具。兼容型 `Stop` Hook 负责记录进展和持久化兜底；如果 CLI 根任务在可靠一轮结束后仍没有原生标题，它只会在回读确认标题依然为空时，复用同一轮的高置信进展章节补上首标题。Stop 入口启动本地后台 worker 后立即返回，不依赖 Codex runtime 是否支持异步 Hook。macOS 使用插件自带的 Shell 入口；Windows 使用官方 `commandWindows`、原生 PowerShell，并优先复用 Desktop 内置的 Node／Codex runtime。
 
 Continuity 不注册 `PreToolUse`。如果 CLI 显示 `PreToolUse hook (failed)`，请在 `/hooks` 中检查用户级或其他插件的 Hook 来源；该错误不是 Continuity 的子智能体派遣入口。
