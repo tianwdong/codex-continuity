@@ -1,148 +1,125 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
 import test from "node:test";
+import { selectDispatchProfile, parseArgs } from "../skills/continuity-subagent-dispatch/scripts/select-profile.mjs";
 
-import {
-  ECONOMY_QUALITY_FLOOR_RATIO,
-  ECONOMY_SCORE_TIE_POINTS,
-  TASK_CLASS_MODELS,
-  parseArgs,
-  selectDispatchProfile,
-} from "../skills/continuity-subagent-dispatch/scripts/select-profile.mjs";
+const ranking = (model, effort, score, cost, extra = {}) => ({
+  id: `codex:${model}:${effort}`, provider: "codex", route: "official_login", model,
+  reasoningEffort: effort, score, maxScore: 100, elapsedMs: 100, estimatedReferenceCostUsd: cost, ...extra,
+});
+const snapshot = (entries) => ({ schemaVersion: "1.0", batch: { id: "fixture", publishedAt: "2026-09-17T00:00:00Z" }, rankings: entries });
+const profile = (entries, extra = {}) => ({ schemaVersion: 1,
+  workerConfigurations: entries.map((x) => ({ model: x.model, reasoningEffort: x.reasoningEffort, canOverride: true })), ...extra });
+const entries = [ranking("gpt-6-astra", "high", 100, 5), ranking("gpt-5.6-sol", "high", 96, 2),
+  ranking("gpt-5.6-luna", "xhigh", 82, 0.1)];
+const choose = (extra = {}) => selectDispatchProfile(snapshot(entries), { hostProfile: profile(entries), ...extra });
 
-function ranking({
-  rank,
-  model,
-  effort,
-  score,
-  cost,
-  elapsed,
-  route = "official_login",
-  provider = "codex",
-}) {
-  return {
-    rank,
-    id: `${provider}:${model}:${effort}`,
-    provider,
-    model,
-    displayName: `${model} / ${effort}`,
-    reasoningEffort: effort,
-    route,
-    score,
-    maxScore: 100,
-    elapsedMs: elapsed,
-    estimatedReferenceCostUsd: cost,
-  };
-}
-
-function snapshot(rankings) {
-  return {
-    schemaVersion: "1.0",
-    generatedAt: "2026-08-16T12:00:00Z",
-    source: { name: "ModelDial Public Radar" },
-    batch: {
-      id: "snapshot-test",
-      publishedAt: "2026-08-16T12:00:00Z",
-    },
-    rankings,
-  };
-}
-
-const solMax = ranking({
-  rank: 1,
-  model: "gpt-5.6-sol",
-  effort: "max",
-  score: 85,
-  cost: 2.49,
-  elapsed: 1_930_000,
+test("economy selects across families using task quality floors; quality selects highest supported score", () => {
+  assert.equal(choose().workerAgent.model, "gpt-5.6-luna");
+  assert.equal(choose({ taskClass: "exploration" }).workerAgent.model, "gpt-5.6-sol");
+  assert.equal(choose({ taskClass: "demanding" }).workerAgent.model, "gpt-5.6-sol");
+  assert.equal(choose({ mode: "quality" }).workerAgent.model, "gpt-6-astra");
+  assert.equal(choose().dispatch.forkTurns, "none");
 });
 
-test("focused economy work keeps the quality anchor and selects the best eligible Luna effort", () => {
-  const result = selectDispatchProfile(snapshot([
-    solMax,
-    ranking({ rank: 2, model: "gpt-5.6-luna", effort: "max", score: 72, cost: 0.178, elapsed: 2_650_000 }),
-    ranking({ rank: 3, model: "gpt-5.6-luna", effort: "xhigh", score: 66, cost: 0.114, elapsed: 1_710_000 }),
-  ]));
-
-  assert.equal(result.mode, "economy");
-  assert.equal(result.taskClass, "focused");
-  assert.equal(result.mainAgent.model, "gpt-5.6-sol");
-  assert.equal(result.mainAgent.reasoningEffort, "max");
-  assert.equal(result.workerAgent.model, "gpt-5.6-luna");
-  assert.equal(result.workerAgent.reasoningEffort, "max");
-  assert.equal(result.selection.preferredModel, TASK_CLASS_MODELS.focused);
-  assert.equal(result.evidenceBoundary.recommendationMode, "advisory_only");
-  assert.equal(result.evidenceBoundary.pairedAgentBenchmark, false);
+test("host capability evidence is required; never guess unsupported models or efforts", () => {
+  assert.equal(selectDispatchProfile(snapshot(entries)).reason, "host_capabilities_unavailable");
+  const p = profile([entries[1]]);
+  assert.equal(choose({ hostProfile: p, mode: "quality" }).workerAgent.model, "gpt-5.6-sol");
+  p.workerConfigurations[0].reasoningEffort = "low";
+  assert.equal(choose({ hostProfile: p }).reason, "no_supported_evidence");
 });
 
-test("exploration economy work stays inside Terra and uses the one-point cost tiebreak", () => {
-  const result = selectDispatchProfile(snapshot([
-    solMax,
-    ranking({ rank: 2, model: "gpt-5.6-luna", effort: "max", score: 80, cost: 0.05, elapsed: 800_000 }),
-    ranking({ rank: 3, model: "gpt-5.6-terra", effort: "high", score: 72, cost: 0.19, elapsed: 1_200_000 }),
-    ranking({ rank: 4, model: "gpt-5.6-terra", effort: "xhigh", score: 71, cost: 0.11, elapsed: 900_000 }),
-  ]), { taskClass: "exploration" });
-
-  assert.equal(result.taskClass, "exploration");
-  assert.equal(result.workerAgent.model, "gpt-5.6-terra");
-  assert.equal(result.workerAgent.reasoningEffort, "xhigh");
-  assert.equal(result.selection.preferredModel, TASK_CLASS_MODELS.exploration);
+test("fixed agent profiles are selected without model overrides and cannot mix routes", () => {
+  const p = profile([entries[2]]);
+  p.workerConfigurations[0] = { model: "gpt-5.6-luna", reasoningEffort: "xhigh", agentType: "luna_worker", canOverride: false };
+  assert.deepEqual(choose({ hostProfile: p }).dispatch, { agentType: "luna_worker", override: false });
+  p.workerConfigurations.push({ model: "gpt-6-astra", reasoningEffort: "high", canOverride: true });
+  assert.throws(() => choose({ hostProfile: p }), /mixed_agent_profiles/);
 });
 
-test("demanding economy work stays inside Sol and prefers the cheaper effort within one point", () => {
-  assert.equal(ECONOMY_SCORE_TIE_POINTS, 1);
-  const result = selectDispatchProfile(snapshot([
-    solMax,
-    ranking({ rank: 2, model: "gpt-5.6-sol", effort: "xhigh", score: 84, cost: 1.25, elapsed: 1_300_000 }),
-    ranking({ rank: 3, model: "gpt-5.6-terra", effort: "max", score: 84, cost: 0.3, elapsed: 900_000 }),
-  ]), { taskClass: "demanding" });
-
-  assert.equal(result.taskClass, "demanding");
-  assert.equal(result.workerAgent.model, "gpt-5.6-sol");
-  assert.equal(result.workerAgent.reasoningEffort, "xhigh");
-  assert.equal(result.selection.preferredModel, TASK_CLASS_MODELS.demanding);
+test("current worker baseline distinguishes unknown, unmeasured, unchanged, dominance and tradeoff", () => {
+  assert.equal(choose().currentWorkerComparison.state, "current_unknown");
+  const select = (currentWorker, extra = {}) => choose({ hostProfile: profile(entries, { currentWorker }), ...extra });
+  assert.equal(select(entries[2]).currentWorkerComparison.state, "unchanged");
+  assert.equal(select(entries[0]).currentWorkerComparison.state, "tradeoff");
+  assert.equal(select({ model: "missing", reasoningEffort: "high" }).currentWorkerComparison.state, "current_unmeasured");
+  const improved = [...entries, ranking("new-worker", "high", 85, 0.05)];
+  const result = selectDispatchProfile(snapshot(improved), { hostProfile: profile(improved, { currentWorker: entries[2] }) });
+  assert.equal(result.workerAgent.model, "new-worker");
+  assert.equal(result.currentWorkerComparison.state, "dominates");
 });
 
-test("quality selects the highest-scoring eligible configuration for both roles", () => {
-  const result = selectDispatchProfile(snapshot([
-    solMax,
-    ranking({ rank: 2, model: "gpt-5.6-luna", effort: "max", score: 72, cost: 0.178, elapsed: 2_650_000 }),
-  ]), { mode: "quality", taskClass: "exploration" });
-
-  assert.equal(result.taskClass, "exploration");
-  assert.equal(result.mainAgent.id, solMax.id);
-  assert.equal(result.workerAgent.id, solMax.id);
-  assert.equal(result.selection.workerAgent, "highest_score");
-  assert.equal(result.selection.preferredModel, null);
+test("overall ranking uses its own identity and never silently falls back to backend", () => {
+  const s = { ...snapshot(entries), schemaVersion: "1.1", defaultRanking: "overallRankings",
+    overallRankings: [entries[1]], overallBatch: { id: "aggregate", publishedAt: "2026-09-17T01:00:00Z" } };
+  const r = selectDispatchProfile(s, { hostProfile: profile(entries) });
+  assert.equal(r.batch.id, "aggregate");
+  assert.equal(r.workerAgent.model, "gpt-5.6-sol");
+  assert.equal(r.evidenceBoundary.configurationEvidence, "published_aggregate");
+  delete s.overallRankings;
+  assert.throws(() => selectDispatchProfile(s), /invalid_ranking_identity/);
 });
 
-test("economy fails closed instead of leaving the preferred task family", () => {
-  assert.equal(ECONOMY_QUALITY_FLOOR_RATIO, 0.8);
-  assert.throws(() => selectDispatchProfile(snapshot([
-    ranking({ rank: 1, model: "gpt-5.6-sol", effort: "max", score: 100, cost: 2.49, elapsed: 1_930_000 }),
-    ranking({ rank: 2, model: "gpt-5.6-terra", effort: "max", score: 79, cost: 0.3, elapsed: 1_200_000 }),
-    ranking({ rank: 3, model: "gpt-5.6-luna", effort: "max", score: 95, cost: 0.1, elapsed: 800_000 }),
-  ]), { taskClass: "exploration" }), /quality floor/);
+test("endpoint evidence stays advisory, never masquerades as login evidence or actual native costs", () => {
+  const refs = entries.map((x) => ({ ...x, route: "custom_endpoint", provider: "cloudflare-reference" }));
+  const r = selectDispatchProfile(snapshot(refs), { hostProfile: profile(entries) });
+  assert.equal(r.status, "recommended");
+  assert.equal(r.workerAgent.route, "custom_endpoint");
+  assert.equal(r.evidenceBoundary.executionEvidence, "cross_route_reference");
+  assert.equal(r.evidenceBoundary.nativePerformanceVerified, false);
+  assert.equal(r.evidenceBoundary.referenceCostIsNativeBilling, false);
+  const mixed = selectDispatchProfile(snapshot([...refs, ranking("gpt-5.6-sol", "high", 90, 20)]), { hostProfile: profile(entries) });
+  assert.equal(mixed.workerAgent.route, "official_login");
+  assert.equal(mixed.workerAgent.estimatedReferenceCostUsd, 20);
 });
 
-test("selector ignores incomplete routes and validates CLI modes and task classes", () => {
-  const result = selectDispatchProfile(snapshot([
-    solMax,
-    ranking({ rank: 2, model: "gpt-5.6-luna", effort: "max", score: 72, cost: 0.178, elapsed: 2_650_000 }),
-    ranking({ rank: 3, model: "gpt-5.6-luna", effort: "xhigh", score: 99, cost: 0.01, elapsed: 10, route: "custom_endpoint" }),
-    { ...ranking({ rank: 4, model: "gpt-5.6-luna", effort: "high", score: 98, cost: 0.01, elapsed: 10 }), estimatedReferenceCostUsd: null },
-  ]));
+test("ambiguous provider configurations and incompatible score scales are not cherry-picked", () => {
+  assert.equal(selectDispatchProfile(snapshot([...entries, { ...entries[0], id: "duplicate" }]),
+    { hostProfile: profile(entries) }).reason, "ambiguous_configuration_evidence");
+  assert.equal(selectDispatchProfile(snapshot([entries[0], { ...entries[1], maxScore: 120 }]),
+    { hostProfile: profile(entries) }).reason, "incomparable_score_scales");
+});
 
-  assert.equal(result.workerAgent.reasoningEffort, "max");
-  assert.deepEqual(parseArgs([]), { mode: "economy", taskClass: "focused", input: null });
-  assert.deepEqual(parseArgs([
-    "--mode", "quality",
-    "--task-class", "demanding",
-    "--input", "/tmp/snapshot.json",
-  ]), {
-    mode: "quality",
-    taskClass: "demanding",
-    input: "/tmp/snapshot.json",
-  });
-  assert.throws(() => parseArgs(["--mode", "fast"]), /Unsupported mode/);
-  assert.throws(() => parseArgs(["--task-class", "generic"]), /Unsupported task class/);
+test("invalid numeric evidence, unknown schemas and malformed capabilities fail safely", () => {
+  const broken = entries.map((x) => ({ ...x, score: 101 }));
+  assert.equal(selectDispatchProfile(snapshot(broken), { hostProfile: profile(entries) }).reason, "no_supported_evidence");
+  assert.throws(() => choose({ hostProfile: { schemaVersion: 1, workerConfigurations: [{}] } }), /invalid_host_profile/);
+  assert.throws(() => selectDispatchProfile({ ...snapshot(entries), schemaVersion: "9" }), /unsupported_snapshot_schema/);
+  assert.throws(() => selectDispatchProfile({ ...snapshot(entries), defaultRanking: "other" }), /unsupported_ranking/);
+});
+
+test("current published snapshot contract supports all task classes without unsupported families", async () => {
+  const s = JSON.parse(await readFile(new URL("fixtures/modeldial-dispatch-2026-09-17.json", import.meta.url), "utf8"));
+  const permitted = [{ model: "gpt-6-astra", reasoningEffort: "high" },
+    { model: "gpt-6-astra", reasoningEffort: "xhigh" }, { model: "gpt-5.6-sol", reasoningEffort: "high" },
+    { model: "gpt-5.6-sol", reasoningEffort: "xhigh" }, { model: "grok-4.6", reasoningEffort: "high" }];
+  for (const taskClass of ["focused", "exploration", "demanding"]) {
+    const r = selectDispatchProfile(s, { taskClass, hostProfile: profile(permitted) });
+    assert.equal(r.status, "recommended");
+    assert.equal(r.ranking, "overallRankings");
+    assert.equal(r.batch.id, s.overallBatch.id);
+    assert.ok(permitted.some((x) => x.model === r.workerAgent.model && x.reasoningEffort === r.workerAgent.reasoningEffort));
+    assert.equal(r.evidenceBoundary.executionEvidence, "cross_route_reference");
+  }
+});
+
+test("CLI validates arguments and reports a missing local profile without leaking its path", () => {
+  assert.equal(parseArgs(["--host-profile", "local.json"]).hostProfilePath, "local.json");
+  for (const args of [["--host-profile"], ["--mode", "speed"], ["--task-class", "unknown"], ["--input", "--mode"]]) {
+    assert.throws(() => parseArgs(args));
+  }
+  const r = spawnSync(process.execPath, ["skills/continuity-subagent-dispatch/scripts/select-profile.mjs", "--host-profile", "/private/SENTINEL_MISSING.json"], { encoding: "utf8" });
+  assert.equal(r.status, 1);
+  assert.equal(JSON.parse(r.stdout).reason, "selector_unavailable");
+  assert.doesNotMatch(r.stdout + r.stderr, /SENTINEL|ENOENT/);
+});
+
+
+test("unsupported ambiguous evidence does not suppress a valid supported worker", () => {
+  const s = snapshot([...entries, { ...entries[0], id: "other-provider-result", maxScore: 120 }]);
+  const r = selectDispatchProfile(s, { hostProfile: profile([entries[1]], { currentWorker: entries[0] }) });
+  assert.equal(r.status, "recommended");
+  assert.equal(r.workerAgent.model, "gpt-5.6-sol");
 });

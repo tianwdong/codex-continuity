@@ -44,6 +44,9 @@ export function threadStateCoordinate(dataDirectory, threadId) {
     actionStatePath: path.join(dataDirectory, "task-action-state", `${digest}.json`),
     promptCheckPath: path.join(dataDirectory, "prompt-check-state", `${digest}.json`),
     nativeTitleTurnPath: path.join(dataDirectory, "native-title-turn", `${digest}.json`),
+    pendingStopPath: path.join(dataDirectory, "pending-stop", `${digest}.json`),
+    stopQueueLockPath: path.join(dataDirectory, "stop-queue-locks", `${digest}.lock`),
+    diagnosticPath: path.join(dataDirectory, "diagnostics", `${digest}.json`),
     actionLockPath: path.join(dataDirectory, "task-action-locks", `${digest}.lock`),
     lockPath: path.join(dataDirectory, "locks", `${digest}.lock`),
   };

@@ -1,199 +1,146 @@
 #!/usr/bin/env node
-
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 export const MODELDIAL_LATEST_URL = "https://modeldial.com/api/v1/radar/latest.json";
-export const ECONOMY_QUALITY_FLOOR_RATIO = 0.8;
-export const ECONOMY_SCORE_TIE_POINTS = 1;
-export const TASK_CLASS_MODELS = Object.freeze({
-  focused: "gpt-5.6-luna",
-  exploration: "gpt-5.6-terra",
-  demanding: "gpt-5.6-sol",
-});
-
-const SUPPORTED_MODES = new Set(["economy", "quality"]);
-const SUPPORTED_TASK_CLASSES = new Set(Object.keys(TASK_CLASS_MODELS));
-const REQUIRED_ROUTE = "official_login";
-const REQUIRED_PROVIDER = "codex";
-
-function isFiniteNumber(value) {
-  return typeof value === "number" && Number.isFinite(value);
-}
+// Product guardrails, not model-role benchmark claims. Families are not fixed.
+export const TASK_QUALITY_FLOORS = Object.freeze({ focused: 0.8, exploration: 0.85, demanding: 0.95 });
+const MODES = new Set(["economy", "quality"]);
+const token = (value) => typeof value === "string" && /^[a-zA-Z0-9_.:-]{1,120}$/.test(value);
+const timestamp = (value) => typeof value === "string" && Number.isFinite(Date.parse(value));
+const identity = (entry) => `${entry.model}:${entry.reasoningEffort}`;
 
 function normalizeCandidate(entry) {
-  if (!entry || typeof entry !== "object") return null;
-  if (entry.provider !== REQUIRED_PROVIDER || entry.route !== REQUIRED_ROUTE) return null;
-  if (typeof entry.id !== "string" || typeof entry.model !== "string") return null;
-  if (typeof entry.reasoningEffort !== "string" || typeof entry.displayName !== "string") return null;
-  if (!isFiniteNumber(entry.score) || !isFiniteNumber(entry.maxScore) || entry.maxScore <= 0) return null;
-  if (!isFiniteNumber(entry.elapsedMs) || entry.elapsedMs < 0) return null;
-  if (!isFiniteNumber(entry.estimatedReferenceCostUsd) || entry.estimatedReferenceCostUsd < 0) return null;
+  if (!entry || ![entry.id, entry.provider, entry.model, entry.reasoningEffort].every(token)) return null;
+  if (!["official_login", "custom_endpoint"].includes(entry.route)) return null;
+  if (![entry.score, entry.maxScore, entry.elapsedMs, entry.estimatedReferenceCostUsd].every(Number.isFinite)) return null;
+  if (entry.maxScore <= 0 || entry.score < 0 || entry.score > entry.maxScore
+    || entry.elapsedMs < 0 || entry.estimatedReferenceCostUsd < 0) return null;
+  return { id: entry.id, provider: entry.provider, model: entry.model, reasoningEffort: entry.reasoningEffort,
+    displayName: `${entry.model} / ${entry.reasoningEffort}`, route: entry.route,
+    score: entry.score, maxScore: entry.maxScore, elapsedMs: entry.elapsedMs,
+    estimatedReferenceCostUsd: entry.estimatedReferenceCostUsd };
+}
 
-  return {
-    id: entry.id,
-    provider: entry.provider,
-    model: entry.model,
-    displayName: entry.displayName,
-    reasoningEffort: entry.reasoningEffort,
-    route: entry.route,
-    score: entry.score,
-    maxScore: entry.maxScore,
-    elapsedMs: entry.elapsedMs,
-    estimatedReferenceCostUsd: entry.estimatedReferenceCostUsd,
-    rank: isFiniteNumber(entry.rank) ? entry.rank : Number.MAX_SAFE_INTEGER,
-  };
+function readRanking(snapshot) {
+  if (!["1.0", "1.1"].includes(snapshot?.schemaVersion)) throw new Error("unsupported_snapshot_schema");
+  const ranking = snapshot.defaultRanking ?? "rankings";
+  if (!["rankings", "overallRankings"].includes(ranking)) throw new Error("unsupported_ranking");
+  const batch = ranking === "overallRankings" ? snapshot.overallBatch : snapshot.batch;
+  if (!Array.isArray(snapshot[ranking]) || !token(batch?.id) || !timestamp(batch?.publishedAt)) {
+    throw new Error("invalid_ranking_identity");
+  }
+  // A declared overall ranking must never silently fall back to backend data.
+  return { ranking, batch: { id: batch.id, publishedAt: batch.publishedAt }, entries: snapshot[ranking] };
+}
+
+function capabilities(profile) {
+  if (!profile || profile.schemaVersion !== 1 || !Array.isArray(profile.workerConfigurations)
+    || !profile.workerConfigurations.length) return null;
+  const configs = profile.workerConfigurations;
+  for (const config of configs) {
+    if (!token(config?.model) || !token(config?.reasoningEffort)
+      || (config.agentType !== undefined && !token(config.agentType))
+      || typeof config.canOverride !== "boolean" || (!config.canOverride && !config.agentType)) {
+      throw new Error("invalid_host_profile");
+    }
+  }
+  // One preselected agent route only: do not change agent type to chase scores.
+  if (new Set(configs.map((x) => x.agentType ?? "default")).size > 1
+    || (configs.some((x) => !x.canOverride) && configs.length !== 1)) throw new Error("mixed_agent_profiles");
+  for (const current of [profile.currentWorker, profile.currentMain]) {
+    if (current != null && (!token(current.model) || !token(current.reasoningEffort))) throw new Error("invalid_current_configuration");
+  }
+  return configs;
 }
 
 function compareQuality(a, b) {
-  return (
-    b.score - a.score
-    || a.elapsedMs - b.elapsedMs
-    || a.estimatedReferenceCostUsd - b.estimatedReferenceCostUsd
-    || a.rank - b.rank
-    || a.id.localeCompare(b.id)
-  );
+  return b.score - a.score || a.estimatedReferenceCostUsd - b.estimatedReferenceCostUsd
+    || a.elapsedMs - b.elapsedMs || a.id.localeCompare(b.id);
+}
+function compareCost(a, b) {
+  return a.estimatedReferenceCostUsd - b.estimatedReferenceCostUsd || compareQuality(a, b);
+}
+function comparison(current, worker, candidates) {
+  if (!current) return { state: "current_unknown" };
+  const matching = candidates.filter((x) => identity(x) === identity(current) && x.maxScore === worker.maxScore);
+  const baseline = matching.length === 1 ? matching[0] : null;
+  if (!baseline) return { state: "current_unmeasured", model: current.model, reasoningEffort: current.reasoningEffort };
+  const scoreDelta = worker.score - baseline.score;
+  const referenceCostDeltaUsd = worker.estimatedReferenceCostUsd - baseline.estimatedReferenceCostUsd;
+  return { state: identity(worker) === identity(baseline) ? "unchanged"
+    : scoreDelta >= 0 && referenceCostDeltaUsd <= 0 ? "dominates" : "tradeoff",
+    model: baseline.model, reasoningEffort: baseline.reasoningEffort, scoreDelta, referenceCostDeltaUsd };
 }
 
-function compareEconomyWorkers(a, b) {
-  const scoreDifference = Math.abs(a.score - b.score);
-  if (scoreDifference > ECONOMY_SCORE_TIE_POINTS) return b.score - a.score;
-  return (
-    a.estimatedReferenceCostUsd - b.estimatedReferenceCostUsd
-    || a.elapsedMs - b.elapsedMs
-    || b.score - a.score
-    || a.rank - b.rank
-    || a.id.localeCompare(b.id)
-  );
-}
-
-function publicCandidate(candidate) {
-  return {
-    id: candidate.id,
-    provider: candidate.provider,
-    model: candidate.model,
-    displayName: candidate.displayName,
-    reasoningEffort: candidate.reasoningEffort,
-    route: candidate.route,
-    score: candidate.score,
-    maxScore: candidate.maxScore,
-    elapsedMs: candidate.elapsedMs,
-    estimatedReferenceCostUsd: candidate.estimatedReferenceCostUsd,
-  };
-}
-
-export function selectDispatchProfile(snapshot, { mode = "economy", taskClass = "focused" } = {}) {
-  if (!SUPPORTED_MODES.has(mode)) throw new Error(`Unsupported mode: ${mode}`);
-  if (!SUPPORTED_TASK_CLASSES.has(taskClass)) throw new Error(`Unsupported task class: ${taskClass}`);
-  if (!snapshot || typeof snapshot !== "object" || !Array.isArray(snapshot.rankings)) {
-    throw new Error("Invalid ModelDial snapshot");
-  }
-  if (typeof snapshot.batch?.id !== "string" || typeof snapshot.batch?.publishedAt !== "string") {
-    throw new Error("ModelDial snapshot is missing batch identity");
-  }
-
-  const candidates = snapshot.rankings.map(normalizeCandidate).filter(Boolean);
-  if (candidates.length === 0) throw new Error("No eligible Codex configurations");
-
-  const mainAgent = [...candidates].sort(compareQuality)[0];
-  let workerAgent;
-  let workerRule;
-
-  if (mode === "quality") {
-    workerAgent = mainAgent;
-    workerRule = "highest_score";
-  } else {
-    const preferredModel = TASK_CLASS_MODELS[taskClass];
-    const qualityFloor = mainAgent.score * ECONOMY_QUALITY_FLOOR_RATIO;
-    const economyCandidates = candidates.filter((candidate) => (
-      candidate.model === preferredModel && candidate.score >= qualityFloor
-    ));
-    if (economyCandidates.length === 0) {
-      throw new Error(`No ${taskClass} worker in ${preferredModel} meets the economy quality floor`);
-    }
-    workerAgent = [...economyCandidates].sort(compareEconomyWorkers)[0];
-    workerRule = "best_eligible_task_family_with_cost_tiebreak";
-  }
-
-  return {
-    schemaVersion: "1.0",
-    generatedAt: snapshot.generatedAt,
-    source: {
-      name: snapshot.source?.name ?? "ModelDial Public Radar",
-      url: MODELDIAL_LATEST_URL,
-    },
-    batch: {
-      id: snapshot.batch.id,
-      publishedAt: snapshot.batch.publishedAt,
-    },
-    evidenceBoundary: {
-      configurationEvidence: "same_batch_independent_configurations",
-      pairedAgentBenchmark: false,
-      recommendationMode: "advisory_only",
-    },
-    mode,
-    taskClass,
-    mainAgent: publicCandidate(mainAgent),
-    workerAgent: publicCandidate(workerAgent),
-    selection: {
-      mainAgent: "highest_score_quality_anchor",
-      workerAgent: workerRule,
-      preferredModel: mode === "economy" ? TASK_CLASS_MODELS[taskClass] : null,
-      economyQualityFloorRatio: ECONOMY_QUALITY_FLOOR_RATIO,
-      scoreTiePoints: ECONOMY_SCORE_TIE_POINTS,
-    },
-  };
+export function selectDispatchProfile(snapshot, { mode = "economy", taskClass = "focused", hostProfile = null } = {}) {
+  if (!MODES.has(mode) || !Object.hasOwn(TASK_QUALITY_FLOORS, taskClass)) throw new Error("invalid_selection_mode");
+  const { ranking, batch, entries } = readRanking(snapshot);
+  const configs = capabilities(hostProfile);
+  const base = { schemaVersion: "2.0", mode, taskClass, ranking, batch,
+    source: { name: "ModelDial Public Radar", url: MODELDIAL_LATEST_URL },
+    evidenceBoundary: { recommendationMode: "advisory_only", pairedAgentBenchmark: false,
+      configurationEvidence: ranking === "overallRankings" ? "published_aggregate" : "single_published_batch",
+      nativePerformanceVerified: false, referenceCostIsNativeBilling: false },
+    currentMain: hostProfile?.currentMain ? { model: hostProfile.currentMain.model, reasoningEffort: hostProfile.currentMain.reasoningEffort } : null };
+  const unavailable = (reason) => ({ ...base, status: "unavailable", reason, workerAgent: null, dispatch: null });
+  if (!configs) return unavailable("host_capabilities_unavailable");
+  const normalized = entries.map(normalizeCandidate).filter(Boolean);
+  const supported = (candidate) => configs.some((x) => identity(x) === identity(candidate));
+  // Never merge login and endpoint results in one cost/score comparison.
+  const native = normalized.filter((x) => x.provider === "codex" && x.route === "official_login");
+  const reference = normalized.filter((x) => x.route === "custom_endpoint");
+  const pool = native.some(supported) ? native : reference;
+  const candidates = pool.filter(supported);
+  if (!candidates.length) return unavailable("no_supported_evidence");
+  if (new Set(candidates.map((x) => x.maxScore)).size !== 1) return unavailable("incomparable_score_scales");
+  // Multiple providers for the same configuration are ambiguous, not a license to cherry-pick.
+  if (new Set(candidates.map(identity)).size !== candidates.length) return unavailable("ambiguous_configuration_evidence");
+  const qualityAnchor = [...candidates].sort(compareQuality)[0];
+  const floor = TASK_QUALITY_FLOORS[taskClass];
+  const eligible = candidates.filter((x) => x.score >= qualityAnchor.score * floor);
+  const workerAgent = [...eligible].sort(mode === "quality" ? compareQuality : compareCost)[0];
+  const config = configs.find((x) => identity(x) === identity(workerAgent));
+  return { ...base, status: "recommended", reason: null, qualityAnchor, workerAgent,
+    evidenceBoundary: { ...base.evidenceBoundary, executionEvidence: pool === native ? "official_login" : "cross_route_reference" },
+    dispatch: config.canOverride
+      ? { agentType: config.agentType ?? "default", model: config.model, reasoningEffort: config.reasoningEffort,
+        forkTurns: "none", override: true }
+      : { agentType: config.agentType, override: false },
+    currentWorkerComparison: comparison(hostProfile.currentWorker, workerAgent, pool),
+    selection: { qualityFloorRatio: floor, workerRule: mode === "quality" ? "highest_supported_score" : "lowest_reference_cost_above_quality_floor" } };
 }
 
 export function parseArgs(argv) {
-  const options = { mode: "economy", taskClass: "focused", input: null };
-  for (let index = 0; index < argv.length; index += 1) {
-    const argument = argv[index];
-    if (argument === "--mode") {
-      options.mode = argv[index + 1];
-      index += 1;
-    } else if (argument === "--task-class") {
-      options.taskClass = argv[index + 1];
-      index += 1;
-    } else if (argument === "--input") {
-      options.input = argv[index + 1];
-      index += 1;
-    } else {
-      throw new Error(`Unknown argument: ${argument}`);
-    }
+  const options = { mode: "economy", taskClass: "focused", input: null, hostProfilePath: null };
+  const names = { "--mode": "mode", "--task-class": "taskClass", "--input": "input", "--host-profile": "hostProfilePath" };
+  for (let i = 0; i < argv.length; i += 2) {
+    const key = names[argv[i]];
+    if (!key || !argv[i + 1] || argv[i + 1].startsWith("--")) throw new Error("invalid_arguments");
+    options[key] = argv[i + 1];
   }
-  if (!SUPPORTED_MODES.has(options.mode)) throw new Error(`Unsupported mode: ${options.mode}`);
-  if (!SUPPORTED_TASK_CLASSES.has(options.taskClass)) {
-    throw new Error(`Unsupported task class: ${options.taskClass}`);
-  }
-  if (options.input === undefined) throw new Error("--input requires a path");
+  if (!MODES.has(options.mode) || !Object.hasOwn(TASK_QUALITY_FLOORS, options.taskClass)) throw new Error("invalid_selection_mode");
   return options;
 }
-
-async function readSnapshot(inputPath) {
-  if (inputPath) return JSON.parse(await readFile(inputPath, "utf8"));
-  const response = await fetch(MODELDIAL_LATEST_URL, {
-    method: "GET",
-    headers: { accept: "application/json" },
-    signal: AbortSignal.timeout(5_000),
-  });
-  if (!response.ok) throw new Error(`ModelDial returned HTTP ${response.status}`);
-  return response.json();
-}
-
 async function main() {
   try {
     const options = parseArgs(process.argv.slice(2));
-    const snapshot = await readSnapshot(options.input);
-    process.stdout.write(`${JSON.stringify(selectDispatchProfile(snapshot, options), null, 2)}\n`);
+    const hostProfile = options.hostProfilePath ? JSON.parse(await readFile(options.hostProfilePath, "utf8")) : null;
+    let snapshot;
+    if (options.input) snapshot = JSON.parse(await readFile(options.input, "utf8"));
+    else {
+      const response = await fetch(MODELDIAL_LATEST_URL, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(5_000) });
+      if (!response.ok) throw new Error("snapshot_http_failure");
+      snapshot = await response.json();
+    }
+    process.stdout.write(`${JSON.stringify(selectDispatchProfile(snapshot, { ...options, hostProfile }), null, 2)}\n`);
   } catch (error) {
-    process.stderr.write(`continuity-subagent-dispatch: ${error.message}\n`);
+    // No raw paths, remote response bodies, credentials or fetch errors in diagnostics.
+    const reason = /^[a-z_]+$/.test(error.message) ? error.message : "selector_unavailable";
+    process.stdout.write(`${JSON.stringify({ status: "unavailable", reason, workerAgent: null, dispatch: null })}\n`);
     process.exitCode = 1;
   }
 }
-
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  await main();
-}
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await main();

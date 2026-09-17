@@ -16,10 +16,15 @@ import {
   launchStopHookWorker,
   maintainContinuityForStop,
   parseStopHookInput,
+  queuedStopInput,
+  runStopHookWorker,
 } from "../src/plugin-stop-hook.mjs";
-import { runTitleCommand } from "../src/plugin-title-command.mjs";
+import { threadStateCoordinate } from "../src/plugin-runtime.mjs";
+import { enqueueStopRequest, readPendingStop } from "../src/stop-work-queue.mjs";
+import { runTitleCommand, runTitleOperation } from "../src/plugin-title-command.mjs";
 import { ProgressLedger } from "../src/progress-ledger.mjs";
 import { TitleLedger } from "../src/title-ledger.mjs";
+import { APP_SERVER_CLIENT_VERSION } from "../src/app-server-client.mjs";
 
 function completedTurn(id, userText, assistantText) {
   return {
@@ -62,6 +67,211 @@ function stopPayload({
     last_assistant_message: assistantMessage,
   };
 }
+
+test("busy Stop worker catches up to the latest exact final without persisting Hook text", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "continuity-stop-drain-"));
+  const coordinate = threadStateCoordinate(directory, "thread-1");
+  let releaseFirst;
+  const firstBlocked = new Promise((resolve) => { releaseFirst = resolve; });
+  let firstStarted;
+  const enteredFirst = new Promise((resolve) => { firstStarted = resolve; });
+  const evaluated = [];
+  const thread = {
+    ...threadFixture(),
+    turns: [1, 2, 3].map((id) => completedTurn(`turn-${id}`, `user ${id}`, `verified result ${id}`)),
+  };
+  try {
+    const worker = runStopHookWorker(JSON.stringify(stopPayload({
+      turnId: "turn-1", assistantMessage: "verified result 1",
+    })), {
+      dataDirectory: directory,
+      receivedAt: "2026-09-08T00:00:01.000Z",
+      resolveCommand: async () => "mock-codex",
+      startServer: async () => ({ readThread: async () => ({ thread }), close() {} }),
+      decideTitles: async ([candidate]) => {
+        evaluated.push([candidate.turnId, candidate.assistantMessage]);
+        if (candidate.turnId === "turn-1") {
+          firstStarted();
+          await firstBlocked;
+        }
+        return [{ ...candidate, titleDecision: "keep", progressDecision: "update",
+          progressChapter: "Verified result", progressSummary: candidate.assistantMessage,
+          progressConfidence: "high" }];
+      },
+    });
+    await enteredFirst;
+    await enqueueStopRequest(coordinate, { threadId: "thread-1", turnId: "turn-2" }, "2026-09-08T00:00:02.000Z");
+    await enqueueStopRequest(coordinate, { threadId: "thread-1", turnId: "turn-3" }, "2026-09-08T00:00:03.000Z");
+    releaseFirst();
+    await worker;
+    assert.deepEqual(evaluated, [["turn-1", "verified result 1"], ["turn-3", "verified result 3"]]);
+    const progress = JSON.parse(await readFile(coordinate.progressPath, "utf8"));
+    assert.equal(progress.sourceTurnId, "turn-3");
+    assert.equal(progress.progress, "verified result 3");
+    assert.ok((await readPendingStop(coordinate.pendingStopPath)).handledAt);
+    for (const filePath of [coordinate.pendingStopPath, coordinate.diagnosticPath, path.join(directory, "continuity.log")]) {
+      assert.doesNotMatch(await readFile(filePath, "utf8"), /verified result|user [123]|last_assistant_message/);
+    }
+    const diagnostic = JSON.parse(await readFile(coordinate.diagnosticPath, "utf8"));
+    assert.equal(diagnostic.turnId, "turn-3");
+    assert.equal(diagnostic.status, "progress_updated");
+    assert.equal(diagnostic.stage, "completed");
+    assert.equal(diagnostic.workerVersion, APP_SERVER_CLIENT_VERSION);
+  } finally {
+    releaseFirst();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("queued recovery rejects another turn, partial output, or delegated identity", () => {
+  const request = { threadId: "thread-1", turnId: "turn-2" };
+  assert.equal(queuedStopInput(request, { ...threadFixture(), id: "another-thread" }), null);
+  assert.equal(queuedStopInput({ ...request, turnId: "missing" }, threadFixture()), null);
+  assert.equal(queuedStopInput(request, { ...threadFixture(), source: "subAgent" }), null);
+  for (const status of ["inProgress", "interrupted", "failed"]) {
+    const thread = threadFixture();
+    thread.turns[1].status = status;
+    assert.equal(queuedStopInput(request, thread), null);
+  }
+  const thread = threadFixture();
+  thread.turns[1].items.at(-1).phase = "commentary";
+  assert.equal(queuedStopInput(request, thread), null);
+  assert.equal(queuedStopInput(request, threadFixture()).last_assistant_message, "Cloudflare 费用止损已经验证。");
+});
+
+test("worker records a safe failure stage without writing runtime error contents", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "continuity-stop-failure-"));
+  try {
+    const result = await runStopHookWorker(JSON.stringify(stopPayload()), {
+      dataDirectory: directory,
+      resolveCommand: async () => { throw new Error("secret-runtime-path-and-token"); },
+    });
+    assert.equal(result.reason, "stop_runtime_failed");
+    const diagnostic = await readFile(threadStateCoordinate(directory, "thread-1").diagnosticPath, "utf8");
+    assert.doesNotMatch(diagnostic, /secret-runtime|last_assistant_message|cwd/);
+    assert.equal(JSON.parse(diagnostic).stage, "runtime");
+    assert.equal(JSON.parse(diagnostic).status, "error");
+    assert.equal((await readPendingStop(threadStateCoordinate(directory, "thread-1").pendingStopPath)).handledAt, undefined);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("waiting workers do not amplify a failed semantic request or replace its diagnostic", async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "continuity-failure-coalescing-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const coordinate = threadStateCoordinate(directory, "thread-1");
+  let runtimeStarts = 0;
+  let modelCalls = 0;
+  const options = {
+    dataDirectory: directory,
+    receivedAt: "2000-01-01T00:00:00.000Z",
+    resolveCommand: async () => "mock-codex",
+    startServer: async () => {
+      runtimeStarts += 1;
+      return { readThread: async () => ({ thread: threadFixture() }), close() {} };
+    },
+    decideTitles: async ([candidate]) => {
+      modelCalls += 1;
+      return [{ ...candidate, semanticFailure: "semantic_nonzero_exit" }];
+    },
+  };
+  const results = await Promise.all(Array.from({ length: 8 }, () => (
+    runStopHookWorker(JSON.stringify(stopPayload()), options)
+  )));
+  assert.equal(runtimeStarts, 1);
+  assert.equal(modelCalls, 1);
+  assert.equal(results.filter((result) => result.reason === "retry_deferred").length, 7);
+  const pending = await readPendingStop(coordinate.pendingStopPath);
+  assert.equal(pending.handledAt, undefined);
+  assert.ok(pending.retryBlockedAt);
+  const doctor = await runTitleOperation("doctor", "thread-1", { dataDirectory: directory });
+  assert.equal(doctor.refresh.state, "failed");
+  assert.equal(doctor.diagnostic.reason, "semantic_nonzero_exit");
+  assert.equal(doctor.lastWorkerVersion, APP_SERVER_CLIENT_VERSION);
+});
+
+test("the original Stop payload can finish a queued turn whose native final is not readable yet", async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "continuity-owner-recovery-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const coordinate = threadStateCoordinate(directory, "thread-1");
+  const thread = threadFixture();
+  thread.turns[1].items.pop();
+  let modelCalls = 0;
+  const options = {
+    dataDirectory: directory,
+    resolveCommand: async () => "mock-codex",
+    startServer: async () => ({ readThread: async () => ({ thread }), close() {} }),
+    decideTitles: async ([candidate]) => {
+      modelCalls += 1;
+      assert.equal(candidate.assistantMessage, "Cloudflare 费用止损已经验证。");
+      return [{ ...candidate, titleDecision: "keep", progressDecision: "update",
+        progressChapter: "Verified", progressSummary: candidate.assistantMessage, progressConfidence: "high" }];
+    },
+  };
+  await enqueueStopRequest(coordinate, { threadId: "thread-1", turnId: "turn-2" }, "2000-01-01T00:00:02.000Z");
+  const waiting = await runStopHookWorker(JSON.stringify(stopPayload({ turnId: "turn-1" })), {
+    ...options, receivedAt: "2000-01-01T00:00:01.000Z",
+  });
+  assert.equal(waiting.reason, "queued_result_unavailable");
+  assert.equal(modelCalls, 0);
+  const owner = await runStopHookWorker(JSON.stringify(stopPayload()), {
+    ...options, receivedAt: "2000-01-01T00:00:02.000Z",
+  });
+  assert.equal(owner.status, "progress_updated");
+  assert.equal(modelCalls, 1);
+  assert.ok((await readPendingStop(coordinate.pendingStopPath)).handledAt);
+  assert.equal(JSON.parse(await readFile(coordinate.progressPath, "utf8")).sourceTurnId, "turn-2");
+});
+
+test("a failed worker can retry the same turn and doctor never calls the failed read current", async () => {
+  for (const failure of ["runtime", "thread_read", "semantic"]) {
+    const directory = await mkdtemp(path.join(os.tmpdir(), `continuity-retry-${failure}-`));
+    const coordinate = threadStateCoordinate(directory, "thread-1");
+    const payload = JSON.stringify(stopPayload());
+    let fail = true;
+    let successfulEvaluations = 0;
+    const options = {
+      dataDirectory: directory,
+      resolveCommand: async () => {
+        if (fail && failure === "runtime") throw new Error("temporary failure");
+        return "mock-codex";
+      },
+      startServer: async () => ({
+        async readThread() {
+          if (fail && failure === "thread_read") throw new Error("temporary failure");
+          return { thread: threadFixture() };
+        }, close() {},
+      }),
+      decideTitles: async ([candidate]) => {
+        if (fail && failure === "semantic") return [{ ...candidate, semanticFailure: "semantic_timeout" }];
+        successfulEvaluations += 1;
+        return [{ ...candidate, titleDecision: "keep", progressDecision: "update",
+          progressChapter: "Verified", progressSummary: candidate.assistantMessage, progressConfidence: "high" }];
+      },
+    };
+    try {
+      const first = await runStopHookWorker(payload, options);
+      assert.equal(first.retryPending, true, failure);
+      assert.equal((await readPendingStop(coordinate.pendingStopPath)).handledAt, undefined, failure);
+      const doctor = await runTitleOperation("doctor", "thread-1", { dataDirectory: directory });
+      assert.equal(doctor.refresh.state, "failed", failure);
+      assert.equal(doctor.refresh.latestStopHandled, false, failure);
+      assert.doesNotMatch(doctor.nextStep, /No local refresh action/, failure);
+
+      fail = false;
+      const blocked = await readPendingStop(coordinate.pendingStopPath);
+      await runStopHookWorker(payload, {
+        ...options, receivedAt: new Date(Date.parse(blocked.retryBlockedAt) + 1).toISOString(),
+      });
+      assert.equal(successfulEvaluations, 1, failure);
+      assert.ok((await readPendingStop(coordinate.pendingStopPath)).handledAt, failure);
+      assert.equal(JSON.parse(await readFile(coordinate.progressPath)).sourceTurnId, "turn-2", failure);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  }
+});
 
 test("accepts the official Stop payload as the semantic source", () => {
   assert.deepEqual(parseStopHookInput(stopPayload()), {
@@ -149,6 +359,7 @@ test("launches Stop maintenance as a detached worker without losing the Hook pay
     nodeExecutable: "/test/node",
     scriptPath: "/plugin/plugin-stop-hook.mjs",
     env: { PATH: "/test/bin" },
+    receivedAt: "2026-09-08T00:00:00.000Z",
   });
 
   assert.deepEqual(result, {
@@ -158,7 +369,7 @@ test("launches Stop maintenance as a detached worker without losing the Hook pay
   });
   assert.deepEqual(spawnCall, {
     command: "/test/node",
-    args: ["/plugin/plugin-stop-hook.mjs", "--worker"],
+    args: ["/plugin/plugin-stop-hook.mjs", "--worker", "--received-at", "2026-09-08T00:00:00.000Z"],
     options: {
       detached: true,
       env: { PATH: "/test/bin" },
@@ -895,6 +1106,8 @@ test("status, undo, lock, and resume commands stay scoped to the current task", 
     summary: "费用止损已经验证",
     confidence: "high",
     updatedAt: progressLedger.current("thread-1").updatedAt,
+    sourceTurnId: "turn-2",
+    sourceMessageId: "message-turn-2",
   });
   assert.deepEqual({
     ok: status.ok,
@@ -1040,14 +1253,21 @@ test("the shell runner returns before detached Stop maintenance completes", asyn
     assert.equal(output.trim(), "{}");
 
     let diagnostic = "";
-    for (let attempt = 0; attempt < 40 && !diagnostic; attempt += 1) {
+    for (let attempt = 0; attempt < 40; attempt += 1) {
       try {
         diagnostic = await readFile(path.join(dataDirectory, "continuity.log"), "utf8");
-      } catch (_) {
-        await new Promise((resolve) => setTimeout(resolve, 50));
-      }
+        if (/error stop_runtime_failed/.test(diagnostic)) {
+          try {
+            await readFile(threadStateCoordinate(dataDirectory, "thread-1").lockPath);
+          } catch (error) {
+            if (error.code === "ENOENT") break;
+          }
+        }
+      } catch (_) {}
+      await new Promise((resolve) => setTimeout(resolve, 50));
     }
-    assert.match(diagnostic, /thread_metadata_unavailable thread-1 turn-2/);
+    assert.match(diagnostic, /error stop_runtime_failed thread-1 turn-2/);
+    assert.equal((await readPendingStop(threadStateCoordinate(dataDirectory, "thread-1").pendingStopPath)).handledAt, undefined);
   } finally {
     await rm(dataDirectory, { recursive: true, force: true });
   }

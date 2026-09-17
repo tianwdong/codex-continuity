@@ -174,10 +174,20 @@ You can also ask in natural language:
 
 ```text
 What did this task most recently accomplish?
+Where did we leave off, and what is still unfinished?
+Check whether Continuity is working.
 Undo the last automatic title change.
 Keep this title and stop updating it automatically.
 Resume automatic title updates.
 ```
+
+Standalone greetings such as “hello” skip task lookup and leave the first-match opportunity available. The current Codex model identifies self-contained translations, rewrites, and other one-shot requests before looking up tasks; no separate classifier is launched.
+
+When several turns finish quickly, background maintenance coalesces waiting requests and catches up to the latest turn. After a processing failure, waiting workers leave the request pending until a new Stop delivery permits another attempt. Status remains readable during maintenance and shows the last reliable progress plus refresh state. Catch-up is not guaranteed if the system terminates the worker or the exact final response cannot be read yet.
+
+“Where did we leave off?” produces a brief for the current task: completed results, explicitly unfinished work or blockers, and decisions still awaiting confirmation, with their sources. It uses the current conversation and recorded progress; when those are insufficient, it reads at most two pages of three recent turns from this task. Missing evidence stays unknown. An ordinary “continue” does not trigger this extra check.
+
+“Check whether Continuity is working” reads only local metadata: the executing package version, the code version recorded by the latest Stop diagnostic when available, latest received and handled turn, progress freshness, background lock, and failure stage with a suggested next action. It does not call a model or claim that either version proves the currently host-loaded version or Hook trust. A launch failure is not evidence that the background worker started.
 
 ## How quiet routing works
 
@@ -192,7 +202,7 @@ Continuity does not interrupt ordinary requests with a workflow menu. When a new
 
 Current-task and low-confidence decisions stay completely silent. A reversible recommendation can use a lower threshold: bounded work with a credible independent benefit may prompt once, while launch still requires direct approval or explicit standing authorization. Automatic launch keeps the stricter boundary of high confidence and safely isolated ownership. Persistent branches, separate tasks, returns, and archives always require confirmation.
 
-Only a **Subagent** route enters the downstream delegation Skill; it does not run independently on every request. That Skill uses Codex model roles to narrow the model family and may read the latest public [ModelDial Radar](https://modeldial.com/radar) snapshot to select a configuration within that family. It always states the main-agent recommendation as well as the worker recommendation. The plugin does not switch the main agent automatically, and no prompt, code, task title, working directory, current configuration, credentials, or telemetry is sent to ModelDial.
+Only a **Subagent** route enters the downstream delegation Skill. Before proposing it, identify the independent deliverable, useful concurrent parent work (or a concrete independent-check benefit), and acceptance evidence. The selector filters to the current host's explicitly supported models and efforts before ranking them; fixed agent profiles stay fixed. Economy uses reference cost within task quality floors; quality chooses the highest supported score. Model families are not hard-coded. The declared overall ranking and its identity are preserved. Endpoint measurements are labeled cross-route reference, not native login performance or subscription billing. The current worker and unknown baselines are distinguished, and the main agent stays unchanged. Missing capabilities or failed selection are disclosed as fallback. No prompt, code, title, paths, capability profile, credentials or telemetry is sent to ModelDial.
 
 ## Compatibility
 
@@ -310,3 +320,5 @@ Then quit Codex/ChatGPT. The installer waits for the main app to exit, rebuilds 
 ## License
 
 Codex Continuity is released under the [MIT License](./LICENSE).
+
+Builds include a deterministic `build-integrity.json`. Doctor reports disk package consistency separately from the last Stop recorder digest; neither proves the host-loaded package. `received_stop_handled` and `matches_received_stop` refer only to received Stop metadata. Coverage of the latest native completed turn remains unverified in local diagnostics. Same-goal continuations do not re-run routing; pending choices retain precedence.

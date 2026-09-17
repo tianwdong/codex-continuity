@@ -1,15 +1,14 @@
 import { spawn as nodeSpawn } from "node:child_process";
-import { appendFile, mkdir, readFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { startAppServer } from "./app-server-client.mjs";
+import { verifyBuildIntegrity } from "./build-integrity.mjs";
+import { APP_SERVER_CLIENT_VERSION, startAppServer } from "./app-server-client.mjs";
 import {
-  acquireThreadLock,
   childEnvironment,
   pluginDataDirectory,
-  releaseThreadLock,
   resolveCodexExecutable,
   semanticEnvironment,
   threadStateCoordinate,
@@ -18,6 +17,7 @@ import { decideTitlesWithCodex } from "./plugin-title-decision.mjs";
 import { loadProgressLedger, ProgressLedger, saveProgressLedger } from "./progress-ledger.mjs";
 import { applyTitleDecision } from "./title-maintainer.mjs";
 import { loadTitleLedger, saveTitleLedger } from "./title-ledger.mjs";
+import { drainStopQueue, enqueueStopRequest } from "./stop-work-queue.mjs";
 
 function nativeTitle(thread) {
   return String(thread?.name || "")
@@ -114,6 +114,7 @@ export async function launchStopHookWorker(rawInput, {
   nodeExecutable = process.execPath,
   scriptPath = fileURLToPath(import.meta.url),
   env = childEnvironment(),
+  receivedAt = new Date().toISOString(),
 } = {}) {
   const event = parseStopHookInput(rawInput);
   if (!event) return { status: "ignored", reason: "invalid_event" };
@@ -138,7 +139,7 @@ export async function launchStopHookWorker(rawInput, {
     };
 
     try {
-      child = spawnImpl(nodeExecutable, [scriptPath, "--worker"], {
+      child = spawnImpl(nodeExecutable, [scriptPath, "--worker", "--received-at", receivedAt], {
         detached: true,
         env,
         stdio: ["pipe", "ignore", "ignore"],
@@ -232,6 +233,8 @@ export async function maintainContinuityForStop(input, {
   command,
   decideTitles = decideTitlesWithCodex,
   codexAvailable = true,
+  threadSnapshot = null,
+  onStage = async () => {},
 } = {}) {
   const event = parseStopHookInput(input);
   if (!event) return { status: "ignored", reason: "invalid_event" };
@@ -246,10 +249,13 @@ export async function maintainContinuityForStop(input, {
   if (!appServer?.readThread) {
     return { status: "ignored", reason: "thread_metadata_unavailable", ...event };
   }
-  let thread = null;
-  try {
-    thread = (await appServer.readThread(event.threadId, { includeTurns: true }))?.thread ?? null;
-  } catch (_) {}
+  await onStage("thread_read");
+  let thread = threadSnapshot;
+  if (!thread) {
+    try {
+      thread = (await appServer.readThread(event.threadId, { includeTurns: true }))?.thread ?? null;
+    } catch (_) {}
+  }
   if (thread && isSubagentThread(thread)) {
     return { status: "ignored", reason: "subagent_thread", ...event };
   }
@@ -280,7 +286,7 @@ export async function maintainContinuityForStop(input, {
   }
   if (!codexAvailable) {
     return change
-      ? { status: "renamed", change, progress: null, ...event }
+      ? { status: "renamed", reason: "account_unavailable", change, progress: null, ...event }
       : { status: "ignored", reason: "account_unavailable", ...event };
   }
 
@@ -289,6 +295,7 @@ export async function maintainContinuityForStop(input, {
     previousChapter: previousProgress?.chapter || "",
     previousProgress: previousProgress?.progress || "",
   };
+  await onStage("semantic");
   const [decided = semanticCandidate] = await decideTitles([semanticCandidate], {
     command,
     cwd: os.tmpdir(),
@@ -297,9 +304,10 @@ export async function maintainContinuityForStop(input, {
     timeoutMs: 150_000,
   });
   if (!decided.titleDecision && !decided.progressDecision) {
+    const reason = decided.semanticFailure || "semantic_decision_unavailable";
     return change
-      ? { status: "renamed", change, progress: null, ...event }
-      : { status: "ignored", reason: decided.semanticFailure || "semantic_decision_unavailable", ...event };
+      ? { status: "renamed", reason, change, progress: null, ...event }
+      : { status: "ignored", reason, ...event };
   }
 
   if (!candidate.titleMetadataAvailable && !change) {
@@ -354,6 +362,8 @@ export async function maintainContinuityForStop(input, {
   };
 }
 
+const packageIntegrityAtStart = verifyBuildIntegrity(fileURLToPath(new URL("../", import.meta.url)));
+
 async function writeDiagnostic(dataDirectory, result) {
   await mkdir(dataDirectory, { recursive: true, mode: 0o700 });
   const line = [
@@ -364,6 +374,24 @@ async function writeDiagnostic(dataDirectory, result) {
     String(result?.turnId || ""),
   ].join(" ").trim();
   await appendFile(path.join(dataDirectory, "continuity.log"), `${line}\n`, { mode: 0o600 });
+  if (result?.threadId && result?.turnId) {
+    const filePath = threadStateCoordinate(dataDirectory, result.threadId).diagnosticPath;
+    await mkdir(path.dirname(filePath), { recursive: true, mode: 0o700 });
+    const temporaryPath = `${filePath}.${process.pid}.tmp`;
+    await writeFile(temporaryPath, `${JSON.stringify({
+      schemaVersion: 1,
+      workerVersion: APP_SERVER_CLIENT_VERSION,
+      packageDigest: (await packageIntegrityAtStart).state === "verified" ? (await packageIntegrityAtStart).digest : null,
+      threadId: result.threadId,
+      turnId: result.turnId,
+      status: result.status,
+      reason: result.reason || "",
+      stage: result.stage || "completed",
+      updatedAt: new Date().toISOString(),
+      durationMs: result.durationMs ?? 0,
+    })}\n`, { mode: 0o600 });
+    await rename(temporaryPath, filePath);
+  }
 }
 
 async function readHookInput() {
@@ -382,45 +410,99 @@ async function nativeTitleTurnId(filePath) {
   }
 }
 
-async function main(rawInput) {
+export function queuedStopInput(request, thread) {
+  if (!hasStopThreadMetadata(thread, request.threadId) || isSubagentThread(thread)) return null;
+  const turn = thread.turns?.find((item) => item.id === request.turnId);
+  if (turn?.status !== "completed") return null;
+  const final = turn.items?.findLast((item) => item.type === "agentMessage" && item.phase === "final_answer");
+  if (!String(final?.text || "").trim() || !String(thread.cwd || "").trim()) return null;
+  return {
+    hook_event_name: "Stop",
+    session_id: request.threadId,
+    turn_id: request.turnId,
+    cwd: thread.cwd,
+    last_assistant_message: final.text,
+  };
+}
+
+export async function runStopHookWorker(rawInput, {
+  dataDirectory = pluginDataDirectory(),
+  receivedAt = new Date().toISOString(),
+  resolveCommand = resolveCodexExecutable,
+  startServer = startAppServer,
+  decideTitles = decideTitlesWithCodex,
+} = {}) {
   const event = parseStopHookInput(rawInput);
   if (!event) return { status: "ignored", reason: "invalid_event" };
   if (event.stopHookActive) return { status: "ignored", reason: "continued_stop", ...event };
   if (!hasStableWorkspace(event)) {
     return { status: "ignored", reason: "workspace_unavailable", ...event };
   }
-  const dataDirectory = pluginDataDirectory();
   const coordinate = threadStateCoordinate(dataDirectory, event.threadId);
-  const lock = await acquireThreadLock(coordinate.lockPath);
-  if (!lock) return { status: "ignored", reason: "already_running", ...event };
-
-  let appServer;
   try {
-    const command = await resolveCodexExecutable();
-    const [titleLedger, progressLedger] = await Promise.all([
-      loadTitleLedger(coordinate.statePath),
-      loadProgressLedger(coordinate.progressPath),
-    ]);
-    try {
-      appServer = await startAppServer({ command, env: childEnvironment() });
-    } catch (_) {}
-    const result = await maintainContinuityForStop(rawInput, {
-      appServer,
-      titleLedger,
-      progressLedger,
-      nativeTitleTurnId: await nativeTitleTurnId(coordinate.nativeTitleTurnPath),
-      command,
-      codexAvailable: true,
-    });
-    await Promise.all([
-      titleLedger.dirty ? saveTitleLedger(coordinate.statePath, titleLedger) : null,
-      progressLedger.dirty ? saveProgressLedger(coordinate.progressPath, progressLedger) : null,
-    ]);
+    await enqueueStopRequest(coordinate, event, receivedAt);
+    return await drainStopQueue(coordinate, { sourceTurnId: event.turnId, processStop: async (request) => {
+      const startedAt = Date.now();
+      let stage = "runtime";
+      let appServer;
+      const report = (result) => writeDiagnostic(dataDirectory, {
+        ...result, threadId: request.threadId, turnId: request.turnId,
+        stage, durationMs: Date.now() - startedAt,
+      });
+      const onStage = async (nextStage) => {
+        stage = nextStage;
+        await report({ status: "running" });
+      };
+      try {
+        await onStage("runtime");
+        const command = await resolveCommand();
+        const [titleLedger, progressLedger] = await Promise.all([
+          loadTitleLedger(coordinate.statePath), loadProgressLedger(coordinate.progressPath),
+        ]);
+        appServer = await startServer({ command, env: childEnvironment() });
+        let input = rawInput;
+        let threadSnapshot = null;
+        if (request.turnId !== event.turnId) {
+          await onStage("thread_read");
+          threadSnapshot = (await appServer.readThread(request.threadId, { includeTurns: true }))?.thread;
+          input = queuedStopInput(request, threadSnapshot);
+          if (!input) {
+            const result = { status: "error", reason: "queued_result_unavailable", retryPending: true };
+            await report(result);
+            return result;
+          }
+        }
+        const result = await maintainContinuityForStop(input, {
+          appServer, titleLedger, progressLedger, threadSnapshot,
+          nativeTitleTurnId: await nativeTitleTurnId(coordinate.nativeTitleTurnPath),
+          command, decideTitles, onStage,
+        });
+        if (result.reason && !["already_evaluated", "subagent_thread", "invalid_event", "continued_stop", "workspace_unavailable"].includes(result.reason)) {
+          result.retryPending = true;
+        }
+        const resultStage = stage;
+        await onStage("persist");
+        await Promise.all([
+          titleLedger.dirty ? saveTitleLedger(coordinate.statePath, titleLedger) : null,
+          progressLedger.dirty ? saveProgressLedger(coordinate.progressPath, progressLedger) : null,
+        ]);
+        stage = result.reason && result.reason !== "already_evaluated" ? resultStage : "completed";
+        await report(result);
+        return result;
+      } catch (_) {
+        const result = { status: "error", reason: `stop_${stage}_failed`, retryPending: true };
+        await report(result);
+        return result;
+      } finally {
+        appServer?.close();
+      }
+    } });
+  } catch (error) {
+    const reason = ["stop_queue_unavailable", "stop_queue_timeout"].includes(error?.message)
+      ? error.message : "stop_worker_failed";
+    const result = { status: "error", reason, threadId: event.threadId, turnId: event.turnId, stage: "queued" };
     await writeDiagnostic(dataDirectory, result);
     return result;
-  } finally {
-    appServer?.close();
-    await releaseThreadLock(coordinate.lockPath, lock);
   }
 }
 
@@ -436,16 +518,19 @@ if (isMain) {
         }
         return result;
       }
-      return main(rawInput);
+      const receivedAt = process.argv[process.argv.indexOf("--received-at") + 1];
+      return runStopHookWorker(rawInput, {
+        receivedAt: Number.isFinite(Date.parse(receivedAt)) ? receivedAt : new Date().toISOString(),
+      });
     })
     .then((result) => {
       process.stdout.write(`${JSON.stringify(buildStopHookOutput(result))}\n`);
     })
-    .catch(async (error) => {
+    .catch(async () => {
       try {
         await writeDiagnostic(pluginDataDirectory(), {
           status: "error",
-          reason: String(error?.message || error).replace(/\s+/g, "_").slice(0, 120),
+          reason: "stop_worker_failed",
         });
       } catch (_) {}
       process.stdout.write("{}\n");

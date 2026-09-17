@@ -4,7 +4,7 @@ param(
   [ValidateSet("prompt", "stop", "title", "dispatch", "action")]
   [string]$Mode,
 
-  [ValidateSet("status", "undo", "lock", "resume")]
+  [ValidateSet("status", "doctor", "undo", "lock", "resume")]
   [string]$Operation,
 
   [ValidateSet("economy", "quality")]
@@ -12,6 +12,8 @@ param(
 
   [ValidateSet("focused", "exploration", "demanding")]
   [string]$TaskClass,
+
+  [string]$HostProfile,
 
   [ValidateSet("propose", "confirm", "start", "cancel", "begin-step", "complete-step", "skip-step", "fail", "finish", "status")]
   [string]$ActionOperation,
@@ -178,6 +180,7 @@ if ($Mode -eq "stop") {
     exit 1
   }
   $entryArguments = @("--mode", $RecommendationMode, "--task-class", $TaskClass)
+  if ($HostProfile) { $entryArguments += @("--host-profile", $HostProfile) }
 } elseif ($Mode -eq "action") {
   if (-not $ActionOperation -or -not $CurrentTaskId) {
     Write-Output '{"ok":false,"error":"action_parameters_unavailable"}'

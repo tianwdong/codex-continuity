@@ -17,6 +17,10 @@ Write every user-facing response in the language of the user's latest request. L
 - If the latest request directly says to keep or do the work in the current task, choose **Current task** immediately. This explicit choice overrides an automatic delegation, branch, or new-task recommendation that has not yet executed.
 - Treat “并行处理”, “开支线”, “新建任务”, “回到主线”, and “回主线并归档” as consent only for the one route that was just proposed or when the user makes the same direct, unambiguous request. Never infer consent from silence or a vague acknowledgement.
 
+## Skip one-shot requests before inspection
+
+With no pending choice or explicit task-management request, classify from the current prompt and already-visible conversation before any task lookup, tool discovery, receipt, or project/memory inspection. Greetings, self-contained translations or rewrites of supplied text, and simple one-shot questions stay in the current task: answer directly, do not list or read other tasks, and stop this workflow before title maintenance or dispatch. Use the current model's understanding without a new model call. Never infer one-shot intent from prompt length: “开始修复” and “继续推进” still represent durable work.
+
 ## Persist only high-impact route actions
 
 Persistent branches, separate tasks, cross-task returns, and archives must use the bundled private action receipt. It stores only task ids, action kind, source turn id, timestamps, and step state; never pass request text, titles, summaries, code, or message content to it. Native subagents return inside the current task and do not use this receipt.
@@ -28,6 +32,10 @@ Persistent branches, separate tasks, cross-task returns, and archives must use t
 - Before every native `create_thread`, `fork_thread`, cross-task send, navigation, or archive call, run `begin-step`. Call the native tool only for decision `perform`; skip it for `done`; stop without replay for `uncertain` or `unavailable`.
 - After native success, immediately run `complete-step`. When `create` succeeds, include the returned child task id as the receipt target. On definite failure, run `fail`. When the planned sequence is complete, run `finish`.
 
+## Continue the existing goal before classifying
+
+After resolving pending choices, use visible conversation context to distinguish a new independent goal from continuation, approval, correction, or a status question about existing work. For the same goal, preserve the chosen container and proceed without a new routing recommendation or ModelDial call. A short reply alone neither establishes a new goal nor cancels a pending choice. Reconsider only an explicit structural request or a material change that creates an independently deliverable responsibility; uncertainty stays here.
+
 ## Choose the smallest fitting container
 
 One-shot lookups, calculations, translations, and similar side questions are outside this workflow. Answer them in the current task without a routing suggestion.
@@ -35,9 +43,11 @@ One-shot lookups, calculations, translations, and similar side questions are out
 Use these routes in order:
 
 1. **Current task:** keep work here when it shares the current objective or context and can remain one coherent result. This is the default. Execute silently.
-2. **Native subagent:** use for bounded work whose result can return to this task now and does not need a durable user-visible identity or later steering. Recommend it when one responsibility can return independently and separate execution has a credible practical benefit. Because an unlaunched recommendation is reversible, any one of these shapes is enough for a medium-confidence suggestion: two or more separable scopes; implementation plus independent verification; cross-platform or documentation／code／test comparison; a read-heavy scan across several files or sources; test or log analysis; or clearly non-overlapping implementation ownership. Infer this from the task shape; do not require the user to say “parallel” or “subagent”. Keep a one-shot lookup, small sequential task, or one dependent chain in the current task. Shared mutable writes do not justify parallel writers: keep those writes with the parent and delegate only a useful read-only scan, review, or verification. If no safe bounded responsibility remains, keep the whole goal here.
+2. **Native subagent:** use for bounded work whose result can return to this task now and does not need a durable user-visible identity or later steering. Recommend it when one responsibility can return independently and separate execution has a credible practical benefit. These shapes may support a medium-confidence suggestion after the benefit check below, but are not sufficient on their own: two or more separable scopes; implementation plus independent verification; cross-platform or documentation／code／test comparison; a read-heavy scan across several files or sources; test or log analysis; or clearly non-overlapping implementation ownership. Infer this from the task shape; do not require the user to say “parallel” or “subagent”. Keep a one-shot lookup, small sequential task, or one dependent chain in the current task. Shared mutable writes do not justify parallel writers: keep those writes with the parent and delegate only a useful read-only scan, review, or verification. If no safe bounded responsibility remains, keep the whole goal here.
 3. **Persistent chat branch:** use when the work needs current history but should retain an independent context that the user may revisit, steer, or continue later. Prefer it for a long-lived alternative direction or an explicitly isolated worktree, not for a disposable subtask.
 4. **Separate new task:** use only for unrelated durable work that is likely to need future steering, multiple turns, reusable artifacts, or persistent state. Never create it automatically.
+
+Before recommending a native subagent, identify one bounded deliverable, the concrete work the parent can do while it runs, and how the return will be checked. File count or a “review” label alone is not evidence of parallel benefit. Keep short sequential work here when briefing, waiting and verification would cost more than direct execution. Avoid duplicate exploration: reuse existing findings and delegate only an unresolved independent responsibility. If the parent has no useful concurrent work, prefer the current task unless an independent check or context isolation has a specific, stated benefit.
 
 When confidence is low, keep the work in the current task and say nothing about routing.
 

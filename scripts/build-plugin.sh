@@ -68,14 +68,17 @@ copy_file skills/continuity-title/SKILL.md
 copy_file skills/continuity-title/agents/openai.yaml
 
 runtime_files=(
+  build-integrity.mjs
   app-server-client.mjs
   plugin-prompt-hook.mjs
+  plugin-diagnostics.mjs
   plugin-runtime.mjs
   plugin-stop-hook.mjs
   plugin-title-command.mjs
   plugin-title-decision.mjs
   progress-ledger.mjs
   semantic-title.schema.json
+  stop-work-queue.mjs
   task-action-command.mjs
   task-action-ledger.mjs
   title-ledger.mjs
@@ -98,6 +101,15 @@ sync_output() {
   fi
   /usr/bin/ditto "$bundle_root" "$output_path"
 }
+
+node --input-type=module - "$bundle_root" <<'NODE'
+import { writeFile } from "node:fs/promises";
+import { pathToFileURL } from "node:url";
+import path from "node:path";
+const root = process.argv[2];
+const { createBuildIntegrity } = await import(pathToFileURL(path.join(root, "src/build-integrity.mjs")));
+await writeFile(path.join(root, "build-integrity.json"), `${JSON.stringify(await createBuildIntegrity(root), null, 2)}\n`);
+NODE
 
 sync_output "$plugin_output"
 sync_output "$marketplace_output"

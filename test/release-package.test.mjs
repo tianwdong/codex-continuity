@@ -1,3 +1,4 @@
+import { verifyBuildIntegrity } from "../src/build-integrity.mjs";
 import assert from "node:assert/strict";
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
@@ -138,9 +139,13 @@ test("repository marketplace bundle exactly matches the distributable allowlist"
   assert.deepEqual([...marketplaceFiles.keys()].sort(), [...distFiles.keys()].sort());
   for (const [name, contents] of marketplaceFiles) {
     assert.deepEqual(contents, distFiles.get(name), name);
+    if (name !== "build-integrity.json") assert.deepEqual(contents, await readFile(path.join(root, name)), `source: ${name}`);
   }
   assert.ok(marketplaceFiles.has("assets/continuity-flow-en.svg"));
   assert.ok(marketplaceFiles.has("assets/continuity-flow-zh-CN.svg"));
+  for (const name of ["src/stop-work-queue.mjs", "src/plugin-diagnostics.mjs"]) {
+    assert.deepEqual(marketplaceFiles.get(name), await readFile(path.join(root, name)), name);
+  }
 
   const topLevelEntries = [...new Set([...marketplaceFiles.keys()].map((name) => name.split(path.sep)[0]))].sort();
   assert.deepEqual(topLevelEntries, [
@@ -152,6 +157,7 @@ test("repository marketplace bundle exactly matches the distributable allowlist"
     "README.zh-CN.md",
     "SECURITY.md",
     "assets",
+    "build-integrity.json",
     "hooks",
     "scripts",
     "skills",
@@ -160,4 +166,11 @@ test("repository marketplace bundle exactly matches the distributable allowlist"
   for (const name of marketplaceFiles.keys()) {
     assert.doesNotMatch(name, /(^|\/)(?:\.git|macos|output|prototype|prototype-lab|test)(?:\/|$)/);
   }
+});
+
+test("both delivered bundles verify against the same deterministic content manifest", async () => {
+  const first = await verifyBuildIntegrity(distRoot);
+  const second = await verifyBuildIntegrity(marketplaceRoot);
+  assert.equal(first.state, "verified");
+  assert.deepEqual(second, first);
 });

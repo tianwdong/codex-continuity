@@ -34,6 +34,7 @@ test("accepts the official UserPromptSubmit payload without retaining the prompt
     cwd: "/tmp/codex-continuity",
     hasDirectTaskLink: false,
     hasTaskHandoff: false,
+    isGreetingOnly: false,
   });
   const directLink = parsePromptHookInput(promptPayload({
     prompt: "codex://threads/019f5f2c-8598-79f3-ad71-4102989b991f，按照这个继续推进。",
@@ -67,15 +68,49 @@ test("builds advisory developer context without blocking or copying the prompt",
   assert.match(output.hookSpecificOutput.additionalContext, /codex-continuity:continuity-context-match/);
   assert.match(output.hookSpecificOutput.additionalContext, /codex-continuity:continuity-work-router/);
   assert.doesNotMatch(output.hookSpecificOutput.additionalContext, /\$continuity-context-match/);
-  assert.match(output.hookSpecificOutput.additionalContext, /First use Skill/);
+  assert.match(output.hookSpecificOutput.additionalContext, /One-shot requests skip task reads and Skills, except task searches\/choices/);
   assert.match(output.hookSpecificOutput.additionalContext, /thread-1/);
   assert.match(output.hookSpecificOutput.additionalContext, /\/tmp\/codex-continuity/);
   assert.match(output.hookSpecificOutput.additionalContext, /same-cwd matching/);
   assert.match(output.hookSpecificOutput.additionalContext, /preserved durable goal/);
-  assert.match(output.hookSpecificOutput.additionalContext, /one-shot side questions stay here/);
   assert.doesNotMatch(JSON.stringify(output), /不应进入 Hook 输出/);
   assert.equal(output.decision, undefined);
   assert.equal(output.continue, undefined);
+});
+
+test("only complete greetings bypass matching while short durable and task-search requests keep their entry", () => {
+  for (const prompt of ["你好", "您好！", "你好呀。", "  Hello!  ", "HI", "早上好～"]) {
+    const event = parsePromptHookInput(promptPayload({ prompt }));
+    assert.equal(event.isGreetingOnly, true, prompt);
+    assert.deepEqual(buildPromptHookOutput(event), {}, prompt);
+    assert.deepEqual(buildPromptHookOutput(event, { includeContextMatch: false }), {}, prompt);
+  }
+  for (const prompt of [
+    "开始修复", "继续推进", "继续", "修复 hi 命令", "你好，继续修复", "Hello, fix the tests",
+    "找相关任务", "有类似任务吗？", "你好，查找同目录旧任务", "继续旧任务", "留在这里",
+  ]) {
+    const event = parsePromptHookInput(promptPayload({ prompt }));
+    assert.equal(event.isGreetingOnly, false, prompt);
+    assert.match(buildPromptHookOutput(event).hookSpecificOutput.additionalContext,
+      /codex-continuity:continuity-context-match/, prompt);
+  }
+});
+
+test("one-shot translations, rewrites, and questions receive a gate before any matching instruction", () => {
+  for (const prompt of [
+    "把这句话翻译成英文：会议改到明天。",
+    "把这句话改得自然一点：我想要知道是否能够安排会议。",
+    "2 加 3 等于多少？",
+  ]) {
+    const event = parsePromptHookInput(promptPayload({ prompt }));
+    // Semantic cases stay with the current model; the Hook does not add a classifier call.
+    assert.equal(event.isGreetingOnly, false, prompt);
+    const context = buildPromptHookOutput(event).hookSpecificOutput.additionalContext;
+    assert.ok(context.indexOf("One-shot requests skip task reads and Skills")
+      < context.indexOf("use Skill codex-continuity:continuity-context-match"));
+    assert.match(context, /except task searches\/choices/);
+    assert.doesNotMatch(context, new RegExp(prompt));
+  }
 });
 
 test("injects first-turn matching and routing for a natural bounded review goal", () => {
@@ -337,6 +372,65 @@ test("the bundled runner checks context and routing on the first prompt, then ro
   }
 });
 
+test("the bundled runner skips greeting state and preserves matching for the first durable goal", async () => {
+  const dataDirectory = await mkdtemp(path.join(os.tmpdir(), "continuity-greeting-runner-"));
+  const runner = fileURLToPath(new URL("../scripts/run-prompt-hook.sh", import.meta.url));
+  const run = (payload) => JSON.parse(execFileSync("/bin/sh", [runner], {
+    input: `${JSON.stringify(payload)}\n`,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      PLUGIN_ROOT: fileURLToPath(new URL("../", import.meta.url)),
+      CODEX_CONTINUITY_DATA: dataDirectory,
+    },
+  }));
+  try {
+    assert.deepEqual(run(promptPayload({ prompt: "你好！" })), {});
+    assert.deepEqual(run(promptPayload({ turnId: "turn-2", prompt: "Hello!" })), {});
+    assert.deepEqual(run({ ...promptPayload({ sessionId: "no-cwd", prompt: "您好" }), cwd: "" }), {});
+    assert.deepEqual(await readdir(dataDirectory), []);
+
+    const firstGoal = run(promptPayload({ turnId: "turn-3", prompt: "开始修复" }))
+      .hookSpecificOutput.additionalContext;
+    assert.match(firstGoal, /same-cwd matching/);
+    assert.match(firstGoal, /continuity-context-match/);
+    const coordinate = threadStateCoordinate(dataDirectory, "thread-1");
+    const marker = await readFile(coordinate.promptCheckPath, "utf8");
+    assert.deepEqual(run(promptPayload({ turnId: "turn-4", prompt: "早上好" })), {});
+    assert.equal(await readFile(coordinate.promptCheckPath, "utf8"), marker);
+    await assert.rejects(stat(coordinate.nativeTitleTurnPath), { code: "ENOENT" });
+
+    const laterGoal = run(promptPayload({ turnId: "turn-5", prompt: "继续推进" }))
+      .hookSpecificOutput.additionalContext;
+    assert.match(laterGoal, /continuity-work-router/);
+    assert.doesNotMatch(laterGoal, /continuity-context-match/);
+  } finally {
+    await rm(dataDirectory, { recursive: true, force: true });
+  }
+});
+
+test("Skill entry gates preserve explicit choices and substantive history before task reads", async () => {
+  const matchingSkill = await readFile(new URL("../skills/continuity-context-match/SKILL.md", import.meta.url), "utf8");
+  const routerSkill = await readFile(new URL("../skills/continuity-work-router/SKILL.md", import.meta.url), "utf8");
+  const firstTaskRead = matchingSkill.indexOf("Call the native `list_threads` tool");
+  const automaticGate = matchingSkill.indexOf("whether this is a durable goal before any task lookup");
+  assert.ok(automaticGate >= 0 && automaticGate < firstTaskRead);
+  assert.match(matchingSkill, /self-contained translations or rewrites of supplied text/);
+  assert.match(matchingSkill, /skip `list_threads` and `read_thread`, and do not invoke the work router/);
+  assert.match(matchingSkill, /explicit request to find related tasks or a valid pending choice follows its entry path/);
+  assert.match(matchingSkill, /If any assistant response predates the current user prompt, skip matching silently/);
+  assert.match(matchingSkill, /sole exception is history containing only pure greetings and replies to those greetings, with no substantive task or result/);
+  assert.match(matchingSkill, /Any substantive prior work, including resumed work, keeps the skip guard/);
+  assert.match(matchingSkill, /not a new model call or prompt-length rule/);
+  assert.match(matchingSkill, /“开始修复” or “继续推进” still represent durable work/);
+  const routeGate = routerSkill.indexOf("## Skip one-shot requests before inspection");
+  assert.ok(routeGate > routerSkill.indexOf("## Resolve a pending choice first"));
+  assert.ok(routeGate < routerSkill.indexOf("## Persist only high-impact route actions"));
+  assert.match(routerSkill, /With no pending choice or explicit task-management request/);
+  assert.match(routerSkill, /stop this workflow before title maintenance or dispatch/);
+  assert.match(routerSkill, /Never infer one-shot intent from prompt length/);
+});
+
 test("the bundled runner consumes matching after a deep-link handoff", async () => {
   const dataDirectory = await mkdtemp(path.join(os.tmpdir(), "continuity-link-handoff-"));
   const runner = fileURLToPath(new URL("../scripts/run-prompt-hook.sh", import.meta.url));
@@ -518,7 +612,7 @@ test("plugin package includes the prompt Hook, matching Skill, work router, and 
   assert.equal(manifest.interface.composerIcon, "./assets/icon.png");
   assert.equal(manifest.interface.logo, "./assets/logo.png");
   assert.match(matchingSkillPrompt, /display_name: "Find where to continue"/);
-  assert.match(titleSkillPrompt, /display_name: "Review task progress"/);
+  assert.match(titleSkillPrompt, /display_name: "Review task progress and context"/);
   assert.match(routerSkillPrompt, /display_name: "Choose a work path"/);
   assert.match(dispatchSkillPrompt, /display_name: "Choose a subagent"/);
   for (const skillPrompt of [matchingSkillPrompt, titleSkillPrompt, routerSkillPrompt, dispatchSkillPrompt]) {
@@ -542,8 +636,11 @@ test("plugin package includes the prompt Hook, matching Skill, work router, and 
   assert.match(dispatchSkillPrompt, /policy:\s*[\s\S]*allow_implicit_invocation:\s*true/);
   assert.match(privacy, /https:\/\/modeldial\.com\/api\/v1\/radar\/latest\.json/);
   assert.doesNotMatch(privacy, /agent-profile\.json/);
-  assert.match(privacy, /不含 turns 的线程元数据/);
-  assert.match(privacy, /不会读取完整任务历史/);
+  assert.match(privacy, /thread\/read\(includeTurns: true\)/);
+  assert.match(privacy, /只选取匹配 Turn ID 的内容/);
+  assert.match(privacy, /不把完整历史发送给语义模型或另存本地/);
+  assert.match(privacy, /只使用对应回合的 `completed \+ final_answer`/);
+  assert.match(privacy, /不保存 Hook 回复正文或工作目录/);
   assert.match(privacy, /UserPromptSubmit.*固定的工作路由规则/);
   assert.match(privacy, /无目录时，插件不运行任务匹配、不读取 App Server 任务数据、不维护标题/);
   assert.match(privacy, /无目录输入、接力任务中接收方的原目标/);
@@ -634,12 +731,10 @@ test("plugin package includes the prompt Hook, matching Skill, work router, and 
   assert.match(dispatchSkill, /`exploration`/);
   assert.match(dispatchSkill, /`demanding`/);
   assert.match(dispatchSkillPrompt, /\$codex-continuity:continuity-subagent-dispatch/);
-  assert.match(dispatchSkill, /do not show either choice prompt/);
-  assert.match(dispatchScript, /ECONOMY_QUALITY_FLOOR_RATIO = 0\.8/);
-  assert.match(dispatchScript, /ECONOMY_SCORE_TIE_POINTS = 1/);
-  assert.match(dispatchScript, /focused: "gpt-5\.6-luna"/);
-  assert.match(dispatchScript, /exploration: "gpt-5\.6-terra"/);
-  assert.match(dispatchScript, /demanding: "gpt-5\.6-sol"/);
+  assert.match(dispatchSkill, /If dispatch is authorized, proceed without another confirmation/);
+  assert.match(dispatchScript, /host_capabilities_unavailable/);
+  assert.doesNotMatch(dispatchScript, /TASK_CLASS_MODELS/);
+
 });
 
 test("subagent dispatch keeps ModelDial advisory, private, dynamic, and failure-closed", async () => {
@@ -650,18 +745,16 @@ test("subagent dispatch keeps ModelDial advisory, private, dynamic, and failure-
   assert.match(routerSkill, /dispatch Skill alone owns ModelDial reads/);
   assert.match(routerSkill, /ModelDial may inform configuration only after this Skill has chosen the native-subagent container/);
   assert.match(dispatchSkill, /https:\/\/modeldial\.com\/api\/v1\/radar\/latest\.json/);
-  assert.match(dispatchSkill, /sends no request text, task title, code, working directory/);
-  assert.match(dispatchSkill, /`recommendationMode: advisory_only`/);
-  assert.match(dispatchSkill, /`pairedAgentBenchmark: false`/);
-  assert.match(dispatchSkill, /Official model roles only define the eligible family/);
-  assert.match(dispatchSkill, /\[ModelDial Radar\]\(https:\/\/modeldial\.com\/radar\)/);
-  assert.match(dispatchSkill, /Always show the selector's `mainAgent`/);
-  assert.match(dispatchSkill, /`保持当前`/);
-  assert.match(dispatchSkill, /`需手动切换`/);
-  assert.match(dispatchSkill, /`需手动确认`/);
-  assert.match(dispatchSkill, /never switch it automatically/);
-  assert.match(dispatchSkill, /Never rebuild the result from memory/);
-  assert.match(dispatchSkill, /never change the main agent/);
+  assert.match(dispatchSkill, /sends no prompt, task title, code, paths, local profile/);
+  assert.match(dispatchSkill, /advisory_only/);
+  assert.match(dispatchSkill, /pairedAgentBenchmark: false/);
+  assert.match(dispatchSkill, /cross-route reference only/);
+  assert.match(dispatchSkill, /Keep the current main agent unchanged/);
+  assert.match(dispatchSkill, /not fixed model families/);
+  assert.match(dispatchSkill, /fork_turns: "none"/);
+  assert.match(dispatchSkill, /Never override a fixed profile/);
+  assert.match(dispatchSkill, /host_capabilities_unavailable/);
+
 });
 
 test("subagent dispatch source contract defines bounded handoff and parent acceptance", async () => {
@@ -690,8 +783,8 @@ test("subagent dispatch source contract defines bounded handoff and parent accep
   assert.match(dispatchSkill, /may send at most one focused correction/);
   assert.match(dispatchSkill, /Otherwise handle it in the parent or report it as unresolved/);
   assert.match(dispatchSkill, /Only the parent may declare the user's task complete/);
-  assert.match(dispatchSkill, /automatically authorized launch gets one brief kickoff/);
-  assert.match(dispatchSkill, /A kickoff is not the terminal receipt/);
+  assert.match(dispatchSkill, /For an automatically authorized launch, announce the bounded responsibility/);
+  assert.match(dispatchSkill, /configuration the native tool actually accepted after launch/);
   assert.match(dispatchSkill, /After the worker returns and parent acceptance completes/);
   assert.match(dispatchSkill, /Never present the selector recommendation as proof/);
   assert.match(dispatchSkill, /never run a tool or network request only to manufacture receipt evidence/);
